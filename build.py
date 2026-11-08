@@ -20,11 +20,11 @@ s = s.replace('<meta name="claude:viewport-fit-sides" content="cover">',
 
 # Pantalla de ingreso
 rep("""if(S.status==='sin-sesion')return `<div class="note warn"><b>Inicia sesión para usar el sistema.</b><br>Necesitas ingresar con tu cuenta institucional para reservar herramientas.</div>`;""",
-    """if(S.status==='sin-sesion')return `<div class="note"><b>Inicia sesión para usar el sistema.</b><br>Entra con tu cuenta @utalca.cl, @alumnos.utalca.cl o Gmail.<div class="actions" style="justify-content:flex-start;margin-top:14px"><button class="btn primary" type="button" data-login>Entrar con Google</button></div></div>`;""")
+    """if(S.status==='sin-sesion')return window.__loginHTML();""")
 # Botón para cerrar sesión (escritorio); en celular se cierra tocando el avatar
 rep("""${ok?`<div class="who">""", """${ok?'<button class="side-btn salir" type="button" data-logout>Cerrar sesión</button>':''}${ok?`<div class="who">""")
 j = s.index('</style>', s.index('Pulido visual'))
-s = s[:j] + '@media(max-width:860px){.side-btn.salir{display:none}}\n.who .av{cursor:pointer}\n' + s[j:]
+s = s[:j] + '@media(max-width:860px){.side-btn.salir{display:none}}\n.who .av{cursor:pointer}\n.lg-box{max-width:440px}.lg-form{display:flex;flex-direction:column;gap:12px;margin-top:16px}.lg-form .field{display:flex;flex-direction:column;gap:4px}.lg-form input{font:inherit;font-size:16px;padding:11px 12px;border:1px solid var(--line);border-radius:var(--r-s);background:var(--surface);color:var(--ink)}.lg-links{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}.lg-link{border:0;background:none;padding:4px 0;color:var(--ink);text-decoration:underline;font:inherit;font-size:var(--t-s);cursor:pointer}.lg-o{display:flex;align-items:center;gap:10px;margin:16px 0 12px;color:var(--muted);font-size:var(--t-s)}.lg-o::before,.lg-o::after{content:"";flex:1;border-top:1px solid var(--line)}.lg-g{width:100%}\n' + s[j:]
 
 # Firebase + adaptador antes del código de la app
 cfg = open(os.path.join(here, 'firebase-config.js'), encoding='utf8').read()
