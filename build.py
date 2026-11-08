@@ -14,9 +14,15 @@ def rep(old, new, n=1):
     s = s.replace(old, new)
 
 s = re.sub(r'<title>[^<]*</title>', '<title>SIPRESTA · Taller de Herramientas</title>', s, count=1)
-s = s.replace('<meta name="claude:viewport-fit-sides" content="cover">',
-              '<meta name="theme-color" content="#141301"><meta name="apple-mobile-web-app-capable" content="yes">'
-              '<meta name="apple-mobile-web-app-title" content="SIPRESTA"><link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="icon" href="icono.svg" type="image/svg+xml">')
+# metadatos del ícono y la app: deben ir dentro de <head> para que iPhone/Android los lean
+HEAD = ('<title>SIPRESTA</title><meta name="theme-color" content="#231f20"><meta name="apple-mobile-web-app-capable" content="yes">'
+        '<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="SIPRESTA">'
+        '<meta name="apple-mobile-web-app-status-bar-style" content="black"><link rel="manifest" href="manifest.webmanifest">'
+        '<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png"><link rel="icon" type="image/png" sizes="192x192" href="icono-192.png">')
+k = s.index('</head>')
+s = s[:k] + HEAD + s[k:]
+s = re.sub(r'<title>SIPRESTA · Taller de Herramientas</title>', '', s, count=1)
+s = s.replace('<meta name="claude:viewport-fit-sides" content="cover">','',1)
 
 # Pantalla de ingreso
 rep("""if(S.status==='sin-sesion')return `<div class="note warn"><b>Inicia sesión para usar el sistema.</b><br>Necesitas ingresar con tu cuenta institucional para reservar herramientas.</div>`;""",
