@@ -1089,6 +1089,17 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 /* avisos vacíos dentro de listas: misma sangría que el título y las filas */
 .panel-list>.empty-a{padding:20px 26px 22px;gap:14px}
 .panel-list>.empty{padding-left:26px;padding-right:26px}
+.epp-i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.epp-l{display:flex;flex-wrap:wrap;gap:6px}
+.epp-c{display:inline-flex;align-items:center;gap:6px;padding:5px 10px 5px 8px;border-radius:var(--r-pill);background:var(--st-mnt-bg);color:var(--st-mnt);font-size:var(--t-s);font-weight:500}
+.epp-box{display:flex;flex-direction:column;gap:10px;margin:14px 0 4px;padding:14px 16px;border-radius:var(--r-m);border:1px solid var(--st-mnt-line,var(--line));background:color-mix(in srgb,var(--st-mnt-bg) 45%,var(--surface))}
+.epp-box>b{font-size:var(--t-m)}
+.epp-box p{margin:0}
+.epp-box .chk{font-weight:600}
+.epp-box.falta{outline:2px solid var(--red);outline-offset:2px}
+.epp-ficha{display:flex;flex-direction:column;gap:8px}
+.epp-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px 14px}
+.epp-o{display:flex;align-items:center;gap:8px}
 </style>
 
 <div id="root"></div>
@@ -1759,6 +1770,7 @@ function pasoPrestamo(){
       <div class="field"><label for="p-mot">Motivo${sobre?' (plazo especial o excedente)':' (si hay plazo especial)'}</label><input id="p-mot" placeholder="Ej.: proyecto de título" autocomplete="off" value="${esc(P.mot)}"></div>
       ${sobre?`<div class="note warn">${esc(quien)} tiene ${nAct} de ${lim} herramientas y este préstamo agrega ${S.cart.length}.</div>`:''}
       <label class="chk" id="p-excw" style="${sobre?'':'display:none'}"><input type="checkbox" id="p-exc" ${P.exc?'checked':''}> Autorizar por sobre el límite de herramientas</label>
+      ${(()=>{const l=[...new Set(S.cart.flatMap(it=>eppDe(T(it.id))))];return l.length?eppAviso(l,'p-epp').replace('Usaré estos elementos durante todo el uso de la herramienta','El estudiante cuenta con sus EPP y se compromete a usarlos'):'';})()}
       <div class="actions"><button class="btn" type="button" data-act="pp-atras">Atrás</button><button class="btn primary" data-act="prestar-ok">Registrar préstamo</button></div>`;
   }
   sheet(h);
@@ -2361,13 +2373,16 @@ const actions={
       <div class="actions">${close}<button class="btn primary" type="button" data-act="reglas-ok" data-id="${id}">Entendido, continuar</button></div>`);
     sheet(`<h2>Reservar ${esc(t.nombre)}</h2><p>Tienes <b>${mins} minutos</b> para retirarla en el taller, hasta las <b>${esc(new Date(Date.now()+mins*60e3).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}))}</b>${mins<S.cfg.minutosRetiro?' (el taller cierra a las '+esc(et.fin)+')':''}. Si no llegas, la reserva se anula.</p>
       <p class="muted">Una vez entregada, el plazo de devolución es de ${t.plazoHoras||24} h. Si ese plazo termina con el taller cerrado (fin de semana, feriado o fuera de horario), la devolución pasa a la siguiente apertura. Si te atrasas, no podrás reservar por ${sanEsc()[0]} días hábiles la primera vez, ${sanEsc()[1]} la segunda y ${sanEsc()[2]} desde la tercera.</p>
+      ${eppAviso(eppDe(t),'r-epp')}
       <div class="actions">${close}<button class="btn primary" data-act="reservar-ok" data-id="${id}">Confirmar reserva</button></div>`);
   },
   'reservar-ok':async id=>{
     const t=T(id);
+    const epp=eppDe(t),ce=document.getElementById('r-epp');
+    if(epp.length&&ce&&!ce.checked){ce.closest('.epp-box').classList.add('falta');return toast('Confirma que usarás los elementos de protección personal.');}
     if(!t||bloqueo()||!disp(t)){sheet('');return toast('Ya no hay disponibilidad para esta herramienta.');}
     const et=estadoTaller(),rest=et.abierto?minutosHasta(et.fin):0;if(!et.abierto||rest<5){sheet('');return toast('El taller está cerrado ahora. Podrás reservar cuando abra.');}
-    const ref=await col('prestamos').add({herramientaId:id,estudianteId:S.uid,estudianteTexto:null,estado:'reservado',creado:iso(Date.now()),retiroLimite:iso(Date.now()+Math.min(S.cfg.minutosRetiro,rest)*60e3),reglasOk:true,plazoHoras:t.plazoHoras||24});
+    const ref=await col('prestamos').add({herramientaId:id,estudianteId:S.uid,estudianteTexto:null,estado:'reservado',creado:iso(Date.now()),retiroLimite:iso(Date.now()+Math.min(S.cfg.minutosRetiro,rest)*60e3),reglasOk:true,plazoHoras:t.plazoHoras||24,...(epp.length?{epp,eppOk:true}:{})});
     sheet('');S.tab.student='mios';render();requestAnimationFrame(()=>{const b=document.querySelector('[data-id="student:mios"]');if(b){b.classList.add('bump');setTimeout(()=>b.classList.remove('bump'),900);}});
     const rid=ref&&ref.id;if(rid){actions['res-qr'](rid,0);setTimeout(confeti,250);}else toast('Reserva creada. Retírala en el taller.');
   },
@@ -2461,6 +2476,7 @@ const actions={
       <div><h2 style="margin:0">${esc(t.nombre)}</h2>${sub?`<p class="muted" style="margin:4px 0 0">${esc(sub)}</p>`:''}</div>
       <div class="ficha-s"><span>${puntos(d,t.stock||0)}<b>${d}</b> de ${t.stock||0} disponibles</span><span>${ico('reloj')}Préstamo de ${t.plazoHoras||24} h</span><span style="--cat:${catColor(t.categoria)}">${icoCat(t.categoria)}${esc(t.categoria||'Sin categoría')}</span></div>
       ${t.descripcion?`<p class="card-desc" style="margin:0">${esc(t.descripcion)}</p>`:''}
+      ${eppDe(t).length?`<div class="epp-ficha"><span class="label">Debes usar</span>${eppChips(eppDe(t))}</div>`:''}
       <button class="btn primary big-cta" type="button" data-act="reservar" data-id="${t.id}" ${d&&!bl&&tallerAbierto()?'':'disabled'}>${!d?'Sin stock por ahora':bl?(bl.t==='sancion'?'Tienes una sanción activa':'Llegaste al máximo de herramientas'):tallerAbierto()?'Reservar':'Disponible cuando abra el taller'}</button>`,'ficha2');},
   mostrador:()=>{S.mostrador=!S.mostrador;if(S.mostrador)S.devSel=[];render();},
   'dev-qr-quitar-mo':id=>{S.devSel=(S.devSel||[]).filter(x=>x!==id);render();},
@@ -2502,6 +2518,8 @@ const actions={
     const sobre=nAct+S.cart.length>lim,mot=val('p-mot');
     if(sobre&&!(document.getElementById('p-exc')||{}).checked){const w=document.getElementById('p-excw');if(w)w.style.display='';return toast(nombre+' tiene '+nAct+' de '+lim+' herramientas y este préstamo agrega '+S.cart.length+'. Marca «Autorizar por sobre el límite» para continuar.');}
     if(sobre&&!mot)return toast('Indica el motivo del excedente.');
+    const eppT=[...new Set(S.cart.flatMap(it=>eppDe(T(it.id))))],pe=document.getElementById('p-epp');
+    if(eppT.length&&pe&&!pe.checked){pe.closest('.epp-box').classList.add('falta');return toast('Confirma que el estudiante cuenta con sus EPP.');}
     const pv=parseInt(val('p-plz'),10)||0,esp=reg?plazoEspecialH(reg):null;
     if(pv>0&&!mot)return toast('Indica el motivo del plazo especial.');
     const now=Date.now();
@@ -2509,7 +2527,7 @@ const actions={
       const t=T(it.id);let hh=t.plazoHoras||24,motivo='';
       if(pv>0){hh=pv*(val('p-un')==='d'?24:1);motivo=mot;}else if(esp){hh=esp;motivo=reg.motivoExc||'';}
       if(sobre)motivo=mot;
-      await col('prestamos').add({herramientaId:t.id,estudianteId:null,estudianteTexto:nombre,estado:'entregado',creado:iso(now),entregadoEn:iso(now),venceEn:iso(ajustarVence(now+hh*3600e3)),plazoHoras:hh,...(it.bien?{unidadBien:it.bien}:{}),...(it.serie?{unidadSerie:it.serie}:{}),...(sobre?{excedeLimite:true}:{}),...(motivo?{motivoExcepcion:motivo}:{})});
+      await col('prestamos').add({herramientaId:t.id,estudianteId:null,estudianteTexto:nombre,estado:'entregado',creado:iso(now),entregadoEn:iso(now),venceEn:iso(ajustarVence(now+hh*3600e3)),plazoHoras:hh,...(it.bien?{unidadBien:it.bien}:{}),...(it.serie?{unidadSerie:it.serie}:{}),...(sobre?{excedeLimite:true}:{}),...(motivo?{motivoExcepcion:motivo}:{}),...(eppDe(t).length?{epp:eppDe(t),eppOk:true}:{})});
     }
     const n=S.cart.length;S.cart=[];
     sheet('');toast(n===1?'Préstamo registrado.':n+' préstamos registrados.');
@@ -2561,7 +2579,7 @@ const actions={
     const n=d.unidades.length,fu=d.unidades.filter(u=>u.fuera).length;
     const stock=n?n:d.stock,extra=n?d.fueraExtra:0,fuera=Math.min(stock,n?fu+extra:d.fuera);
     const doc={nombre:d.nombre,marca:d.marca,modelo:d.modelo,categoria:d.categoria,codigo:d.codigo.toUpperCase(),descripcion:d.descripcion,ubicacion:d.ubicacion,
-      stock,fuera,fueraExtra:extra,plazoHoras:Math.max(1,d.plazoHoras||24),activa:d.activa,destacada:!!d.destacada,fotoId:d.fotoId||null,unidades:d.unidades};
+      stock,fuera,fueraExtra:extra,plazoHoras:Math.max(1,d.plazoHoras||24),activa:d.activa,destacada:!!d.destacada,fotoId:d.fotoId||null,unidades:d.unidades,epp:Array.isArray(d.epp)?d.epp:eppSugerido(d)};
     if(doc.categoria&&esAdmin()){const cl=catList(),ex=cl.find(x=>x.toLowerCase()===doc.categoria.toLowerCase());if(ex)doc.categoria=ex;else{S.cfg.categorias=[...cl,doc.categoria];await S.db.doc('ajustes/general').set({...S.cfg});}}
     if(d.id)await S.db.doc('herramientas/'+d.id).update(doc);else await col('herramientas').add(doc);
     S.draft=null;sheet('');toast('Inventario actualizado.');
@@ -2637,6 +2655,35 @@ function resizeImg(file,max){
     im.src=u;
   });
 }
+/* ===== EPP (elementos de protección personal) por herramienta ===== */
+const EPP=[
+ ['lentes','Lentes de seguridad','<path d="M3 11h18M5 11v3a3 3 0 0 0 6 0v-3M13 11v3a3 3 0 0 0 6 0v-3M11 13h2"/>'],
+ ['oidos','Protección auditiva','<path d="M5 14v-3a7 7 0 0 1 14 0v3"/><rect x="3" y="13" width="4" height="6" rx="1.5"/><rect x="17" y="13" width="4" height="6" rx="1.5"/>'],
+ ['guantes','Guantes','<path d="M8 21v-6L5.5 12a1.6 1.6 0 0 1 2.4-2L9 11V5a1.3 1.3 0 0 1 2.6 0v5-6a1.3 1.3 0 0 1 2.6 0v6-5a1.3 1.3 0 0 1 2.6 0v9c0 3-1.5 5-4 6"/>'],
+ ['mascarilla','Mascarilla','<path d="M4 9c3-1 5-1.5 8-1.5S17 8 20 9v4c-2 3-5 4.5-8 4.5S6 16 4 13z"/><path d="M8 11.5h8M9 14h6"/>'],
+ ['careta','Careta para soldar','<path d="M6 4h12v9a6 6 0 0 1-12 0z"/><path d="M8.5 8.5h7v3h-7z"/>'],
+ ['pechera','Pechera','<path d="M9 3c0 2 1.3 3 3 3s3-1 3-3M7 5l2-2M17 5l-2-2M7 5l-1 4h12l-1-4M6 9v12h12V9"/>'],
+ ['calzado','Calzado de seguridad','<path d="M4 17v-6l4-1 1-4h4v5l6 2a2 2 0 0 1 1 2v2zM4 17h16"/>']];
+const EPP_N=Object.fromEntries(EPP.map(e=>[e[0],e[1]]));
+const icoEpp=k=>{const e=EPP.find(x=>x[0]===k);return e?`<svg class="epp-i" viewBox="0 0 24 24" aria-hidden="true">${e[2]}</svg>`:'';};
+/* EPP sugeridos según el tipo de herramienta, mientras el taller no los defina en la ficha */
+function eppSugerido(t){
+  const n=(String(t.nombre||'')+' '+String(t.categoria||'')).toLowerCase(),has=r=>r.test(n);
+  if(has(/sold|porta electrodo|pinza tierra|\bmig\b/))return ['careta','guantes','pechera'];
+  if(has(/esmeril|amoladora|tronzadora|cortadora de metal/))return ['lentes','oidos','guantes'];
+  if(has(/rotomartillo|percutor|clavadora|cepilladora|fresadora|ingletadora|sierra circular/))return ['lentes','oidos'];
+  if(has(/lijadora|dremel|multiprop/))return ['lentes','mascarilla'];
+  if(has(/sierra|caladora|cizalla|taladro|router|cnc/))return ['lentes'];
+  if(has(/pistola de calor|cautin|cautín/))return ['guantes'];
+  if(has(/picota|chuzo|combo|tijera cortar lata|cortar lata/))return ['lentes','guantes'];
+  return [];
+}
+const eppDe=t=>!t?[]:Array.isArray(t.epp)?t.epp.filter(k=>EPP_N[k]):eppSugerido(t);
+const eppChips=l=>l.length?`<span class="epp-l">${l.map(k=>`<span class="epp-c">${icoEpp(k)}${esc(EPP_N[k])}</span>`).join('')}</span>`:'';
+function eppAviso(l,id){
+  if(!l.length)return '';
+  return `<div class="epp-box"><b>Protección personal obligatoria</b>${eppChips(l)}<p class="muted">Cada estudiante debe traer sus propios EPP. El taller solo los facilita en casos puntuales.</p><label class="chk"><input type="checkbox" id="${id}"> Usaré estos elementos durante todo el uso de la herramienta</label></div>`;
+}
 async function cargarFotosLote(files){
   if(!files.length)return;
   const as=await window.claude.use('assets');
@@ -2679,7 +2726,7 @@ async function subirFoto(file){
 function nuevoDraft(t){
   const x=t||{};
   return {id:t?t.id:'',nombre:x.nombre||'',marca:x.marca||'',modelo:x.modelo||'',categoria:x.categoria||'',codigo:x.codigo||'',descripcion:x.descripcion||'',ubicacion:x.ubicacion||'',
-    stock:t?(x.stock||0):1,fuera:x.fuera||0,fueraExtra:x.fueraExtra||0,plazoHoras:x.plazoHoras||24,activa:x.activa!==false,destacada:!!x.destacada,fotoId:x.fotoId||'',
+    stock:t?(x.stock||0):1,fuera:x.fuera||0,epp:Array.isArray(x.epp)?[...x.epp]:undefined,fueraExtra:x.fueraExtra||0,plazoHoras:x.plazoHoras||24,activa:x.activa!==false,destacada:!!x.destacada,fotoId:x.fotoId||'',
     unidades:unidadesDe(x).map(u=>({serie:u.serie||'',bien:u.bien||'',marca:u.marca||'',modelo:u.modelo||'',fuera:!!u.fuera}))};
 }
 function leerForm(){
@@ -2689,6 +2736,7 @@ function leerForm(){
   txt('nombre','t-nombre');txt('marca','t-marca');txt('modelo','t-modelo');txt('categoria','t-cat');if(d.categoria==='__nueva'){const nc=document.getElementById('t-catnew');d.categoria=nc?nc.value.trim():'';}txt('codigo','t-cod');txt('descripcion','t-desc');txt('ubicacion','t-ubi');
   num('stock','t-stock');num('fuera','t-fuera');num('fueraExtra','t-extra');num('plazoHoras','t-plazo');
   const act=document.getElementById('t-activa');if(act)d.activa=act.checked;
+  if(document.getElementById('t-epp-lentes'))d.epp=EPP.map(e=>e[0]).filter(k=>{const c=document.getElementById('t-epp-'+k);return c&&c.checked;});
   const dst=document.getElementById('t-dest');if(dst)d.destacada=dst.checked;
   d.unidades=d.unidades.map((u,i)=>{
     const s=document.getElementById('u-s-'+i),b=document.getElementById('u-b-'+i),f=document.getElementById('u-f-'+i),mk=document.getElementById('u-m-'+i),md=document.getElementById('u-o-'+i);
@@ -2729,6 +2777,9 @@ function pintarForm(focusId){
       ${filas}
       <div class="actions" style="justify-content:flex-start"><button class="btn small" type="button" data-act="u-add">Agregar unidad</button></div>
       ${us.length?`<div class="field"><label for="t-extra">En mantención sin unidad asignada</label><input id="t-extra" type="number" min="0" value="${d.fueraExtra}"></div>`:`<div class="field"><label for="t-fuera">Unidades en mantención</label><input id="t-fuera" type="number" min="0" value="${d.fuera}"></div>`}</fieldset></div></details>
+    <fieldset class="epp-f"><legend class="label">Protección personal (EPP) que exige esta herramienta</legend>
+      <p class="muted">${Array.isArray(d.epp)?'Se mostrará al reservar y al prestar, y el estudiante deberá confirmar que la usará.':'Sugerido según el tipo de herramienta. Ajústalo y guarda para dejarlo fijo.'}</p>
+      <div class="epp-g">${EPP.map(([k,n])=>`<label class="chk epp-o"><input type="checkbox" id="t-epp-${k}" ${eppDe(d).includes(k)?'checked':''}> ${icoEpp(k)}${esc(n)}</label>`).join('')}</div></fieldset>
     <label class="chk"><input type="checkbox" id="t-activa" ${d.activa?'checked':''}> Visible en el catálogo</label>
     <label class="chk"><input type="checkbox" id="t-dest" ${d.destacada?'checked':''}> Destacada: aparece arriba en el catálogo</label>
     <div class="actions">${close}<button class="btn primary" data-act="guardar-tool">Guardar</button></div>`,'wide');
