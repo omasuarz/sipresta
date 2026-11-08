@@ -1,0 +1,22 @@
+{
+ "name": "SIPRESTA · Taller de Herramientas y Materiales",
+ "short_name": "SIPRESTA",
+ "start_url": "./",
+ "display": "standalone",
+ "background_color": "#141301",
+ "theme_color": "#141301",
+ "lang": "es-CL",
+ "icons": [
+  {
+   "src": "icono-192.png",
+   "sizes": "192x192",
+   "type": "image/png"
+  },
+  {
+   "src": "icono-512.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "any maskable"
+  }
+ ]
+}

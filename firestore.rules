@@ -1,0 +1,57 @@
+rules_version = '2';
+// Reglas de seguridad de SIPRESTA (Firestore)
+// Pegar en Firebase → Firestore Database → Reglas → Publicar.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Sesión iniciada con un correo verificado de los dominios permitidos
+    function dentro() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower().matches('.*@(utalca[.]cl|alumnos[.]utalca[.]cl|gmail[.]com)$');
+    }
+    function correo() { return request.auth.token.email.lower(); }
+    function dueno() { return dentro() && correo() == 'omar.suarez@utalca.cl'; }
+    function enEquipo() { return exists(/databases/$(database)/documents/equipo/$(correo())); }
+    // Encargados y administradores (se asignan en la sección Usuarios de la app)
+    function equipo() { return dueno() || (dentro() && enEquipo()); }
+    function admin() {
+      return dueno() || (dentro() && enEquipo()
+        && get(/databases/$(database)/documents/equipo/$(correo())).data.rol == 'admin');
+    }
+    function esMio() { return request.auth.uid == resource.data.estudianteId; }
+
+    match /herramientas/{id} { allow read: if dentro(); allow write: if equipo(); }
+    match /ajustes/{id}      { allow read: if dentro(); allow write: if equipo(); }
+    match /sanciones/{id}    { allow read: if dentro(); allow write: if equipo(); }
+    match /fotos/{id}        { allow read: if dentro(); allow write: if equipo(); }
+    match /usuarios/{id}     { allow read, write: if equipo(); }
+
+    // Nombre visible de cada persona (lo escribe cada uno al entrar)
+    match /perfiles/{uid} {
+      allow read: if dentro();
+      allow write: if dentro() && request.auth.uid == uid;
+    }
+
+    // Quién es encargado o administrador (lo mantiene la app desde Usuarios)
+    match /equipo/{mail} {
+      allow read: if dentro() && (mail == correo() || equipo());
+      allow write: if admin();
+    }
+
+    match /prestamos/{id} {
+      allow read: if dentro();
+      // El estudiante solo puede crear reservas a su nombre
+      allow create: if equipo() || (dentro()
+        && request.resource.data.estudianteId == request.auth.uid
+        && request.resource.data.estado == 'reservado');
+      // y solo cancelar (o deshacer la cancelación de) sus propias reservas
+      allow update: if equipo() || (dentro() && esMio()
+        && request.resource.data.estudianteId == request.auth.uid
+        && request.resource.data.herramientaId == resource.data.herramientaId
+        && resource.data.estado in ['reservado', 'cancelado']
+        && request.resource.data.estado in ['reservado', 'cancelado']);
+      allow delete: if equipo();
+    }
+  }
+}
