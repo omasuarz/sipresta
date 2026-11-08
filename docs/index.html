@@ -1,4 +1,4 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style><title>SIPRESTA</title><meta name="theme-color" content="#231f20"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="SIPRESTA"><meta name="apple-mobile-web-app-status-bar-style" content="black"><link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png"><link rel="icon" type="image/png" sizes="192x192" href="icono-192.png"></head><body>
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style><title>SIPRESTA</title><meta name="theme-color" content="#231f20"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="SIPRESTA"><meta name="apple-mobile-web-app-status-bar-style" content="black"><link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png"><link rel="icon" type="image/png" sizes="192x192" href="icono-192.png"></head><body>
 
 
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
@@ -1078,6 +1078,13 @@ button.mio2{cursor:pointer}
 /* punto de aviso junto al ícono en la barra lateral */
 @media(min-width:861px){.nav-dot{top:9px;left:30px;right:auto}}
 .brand .logo,.res-brand img{border-radius:6px}
+/* visualización estable en celular: sin zoom automático al escribir ni desbordes */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+@media(max-width:860px){
+ input,select,textarea,.search,.field input,.field select,.field textarea,.fsel select,.mo-scan input{font-size:16px!important}
+ html,body{overflow-x:hidden}
+ .main{max-width:100vw;overflow-x:clip}
+}
 @media(max-width:860px){.side-btn.salir{display:none}}
 .who .av{cursor:pointer}
 .lg-box{max-width:440px}.lg-form{display:flex;flex-direction:column;gap:12px;margin-top:16px}.lg-form .field{display:flex;flex-direction:column;gap:4px}.lg-form input{font:inherit;font-size:16px;padding:11px 12px;border:1px solid var(--line);border-radius:var(--r-s);background:var(--surface);color:var(--ink)}.lg-links{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}.lg-link{border:0;background:none;padding:4px 0;color:var(--ink);text-decoration:underline;font:inherit;font-size:var(--t-s);cursor:pointer}.lg-o{display:flex;align-items:center;gap:10px;margin:16px 0 12px;color:var(--muted);font-size:var(--t-s)}.lg-o::before,.lg-o::after{content:"";flex:1;border-top:1px solid var(--line)}.lg-g{width:100%}

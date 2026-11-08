@@ -19,6 +19,7 @@ HEAD = ('<title>SIPRESTA</title><meta name="theme-color" content="#231f20"><meta
         '<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="SIPRESTA">'
         '<meta name="apple-mobile-web-app-status-bar-style" content="black"><link rel="manifest" href="manifest.webmanifest">'
         '<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png"><link rel="icon" type="image/png" sizes="192x192" href="icono-192.png">')
+s = s.replace('content="width=device-width,initial-scale=1,viewport-fit=cover"', 'content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover"', 1)
 k = s.index('</head>')
 s = s[:k] + HEAD + s[k:]
 s = re.sub(r'<title>SIPRESTA · Taller de Herramientas</title>', '', s, count=1)
