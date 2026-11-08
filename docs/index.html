@@ -2401,10 +2401,18 @@ async function render(){
   if(t!==rt)return;
   paint();
 }
+/* Mantiene lo que se está escribiendo cuando la pantalla se actualiza sola
+   (llegan datos nuevos, pasa un minuto, etc.). Solo se repone si el dato guardado no cambió. */
+function defCampo(e){if(e.type==='checkbox'||e.type==='radio')return e.defaultChecked;if(e.tagName==='SELECT'){const o=[...e.options].find(x=>x.defaultSelected)||e.options[0];return o?o.value:'';}return e.defaultValue;}
+function valCampo(e){return e.type==='checkbox'||e.type==='radio'?e.checked:e.value;}
+function guardarCampos(root){const m={};root.querySelectorAll('input[id],textarea[id],select[id]').forEach(e=>{if(e.type==='file'||e.type==='hidden')return;const v=valCampo(e),d=defCampo(e);if(v!==d)m[e.id]={t:e.tagName,v,d};});return m;}
+function reponerCampos(m){for(const id in m){const e=document.getElementById(id),x=m[id];if(!e||e.tagName!==x.t||defCampo(e)!==x.d)continue;if(e.type==='checkbox'||e.type==='radio')e.checked=x.v;else e.value=x.v;}}
 function paint(){
   const a=document.activeElement,root=$('#root');
   const aid=a&&a.id&&root.contains(a)?a.id:null,ss=aid?a.selectionStart:null;
+  const borr=guardarCampos(root);
   root.innerHTML=shell();
+  reponerCampos(borr);
   aplicarPaleta();tapePage();plegarConfig();
   fitHero();
   if(S.slide){const mn=root.querySelector('.main');if(mn)mn.classList.add('sl-'+S.slide);S.slide='';}
