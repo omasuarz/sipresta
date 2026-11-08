@@ -2417,6 +2417,8 @@ function paint(){
   fitHero();
   if(S.slide){const mn=root.querySelector('.main');if(mn)mn.classList.add('sl-'+S.slide);S.slide='';}
   if(aid){const n=document.getElementById(aid);if(n){n.focus();try{if(ss!=null)n.setSelectionRange(ss,ss);}catch(e){}}}
+  /* al cambiar de sección, partir desde arriba */
+  const vk=JSON.stringify(S.tab);if(paint.vk!==undefined&&paint.vk!==vk){window.scrollTo(0,0);const mn=root.querySelector('.main');if(mn)mn.scrollTop=0;}paint.vk=vk;
 }
 function fitHero(){
   const h=document.querySelector('.hero h1'),c=document.querySelector('.hero-copy');if(!h||!c)return;
