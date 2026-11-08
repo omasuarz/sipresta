@@ -3082,12 +3082,13 @@ Object.assign(actions,{
     const f=i.files&&i.files[0];if(!f)return;let d;
     try{d=JSON.parse(await f.text());}catch(e){return toast('El archivo no es un respaldo válido.');}
     const C=d&&d.colecciones;if(!C||d.app!=='SIPRESTA')return toast('El archivo no es un respaldo de SIPRESTA.');
-    const res=Object.entries(C).map(([k,v])=>`${(v||[]).length} ${k}`).join(' · ');
+    const NOM={herramientas:'Herramientas (inventario)',usuarios:'Usuarios',prestamos:'Préstamos',sanciones:'Sanciones',ajustes:'Configuración del taller'};
     S.impJSON=C;
-    sheet(`<h2>Restaurar respaldo</h2><p>Se cargarán: <b>${esc(res)}</b>.</p><p class="muted">Los registros con el mismo código se reemplazan; los demás se mantienen.</p><div class="actions"><button class="btn" type="button" data-act="cerrar">Cancelar</button><button class="btn primary" type="button" data-act="json-imp-ok">Restaurar</button></div>`);};i.click();},
+    sheet(`<h2>Restaurar respaldo</h2><p class="muted">Elige qué cargar. Los registros con el mismo código se reemplazan; los demás se mantienen.</p><fieldset>${Object.keys(NOM).map(k=>{const n=(C[k]||[]).length;return `<label class="chk"><input type="checkbox" name="imp-col" value="${k}" ${n?'checked':'disabled'}> ${NOM[k]} <span class="muted">(${n})</span></label>`;}).join('')}</fieldset><div class="actions"><button class="btn" type="button" data-act="cerrar">Cancelar</button><button class="btn primary" type="button" data-act="json-imp-ok">Restaurar</button></div>`);};i.click();},
   'json-imp-ok':async()=>{
-    const C=S.impJSON;if(!C)return;S.impJSON=null;sheet('');toast('Restaurando…');
-    const ok=['herramientas','prestamos','sanciones','usuarios','ajustes'];let n=0,err=0;
+    const C=S.impJSON;if(!C)return;
+    const ok=[...document.querySelectorAll('input[name=imp-col]:checked')].map(x=>x.value);if(!ok.length)return toast('Marca al menos un grupo.');
+    S.impJSON=null;sheet('');toast('Restaurando…');let n=0,err=0;
     for(const k of ok){const L=C[k]||[];for(let i=0;i<L.length;i+=20){await Promise.all(L.slice(i,i+20).map(async x=>{const {id,...r}=x;if(!id)return;try{await S.db.doc(k+'/'+id).set(r);n++;}catch(e){err++;}}));}}
     toast(err?`Restaurados ${n} registros; ${err} con error.`:`Listo: ${n} registros restaurados.`);
   },
