@@ -3,7 +3,7 @@
  "short_name": "SIPRESTA",
  "start_url": "./",
  "display": "standalone",
- "background_color": "#141301",
+ "background_color": "#231f20",
  "theme_color": "#141301",
  "lang": "es-CL",
  "icons": [
