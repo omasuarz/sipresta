@@ -2139,7 +2139,7 @@ function pageMeta(){
     const M={hoy:['Resumen del taller','Disponibilidad, préstamos y devoluciones.','<button class="btn primary" data-act="scan-foco">＋ Nuevo préstamo</button>'],
       inventario:S.invModo==='etiquetas'
         ?['Etiquetas QR','Imprime una etiqueta por herramienta o por unidad.','<button class="btn" data-act="inv-modo" data-id="lista">← Volver al inventario</button><button class="btn primary" data-act="imprimir">Imprimir etiquetas</button>']
-        :['Inventario','Cada herramienta, identificada y disponible.','<button class="btn" data-act="inv-modo" data-id="etiquetas">Etiquetas QR</button><button class="btn primary" data-act="nueva-tool">＋ Nueva herramienta</button>'],
+        :['Inventario','Cada herramienta, identificada y disponible.','<button class="btn" data-act="inv-modo" data-id="etiquetas">Etiquetas QR</button><button class="btn" data-act="fotos-lote">Cargar fotos</button><input type="file" id="fotos-lote-f" accept="image/*" multiple hidden><button class="btn primary" data-act="nueva-tool">＋ Nueva herramienta</button>'],
       personas:['Usuarios','Estudiantes, funcionarios, docentes y equipo del taller.','<button class="btn" data-act="sanc-nueva">＋ Sanción</button><button class="btn primary" data-act="nuevo-user">＋ Nuevo usuario</button>'],
       registro:['Registro','Uso del taller y préstamos ya cerrados.',''],
       ajustes:['Configuración',esAdmin()?'Condiciones, categorías, horario, contacto, datos y apariencia.':'Apariencia de la aplicación en este dispositivo.','']}[cur];
@@ -2637,6 +2637,29 @@ function resizeImg(file,max){
     im.src=u;
   });
 }
+async function cargarFotosLote(files){
+  if(!files.length)return;
+  const as=await window.claude.use('assets');
+  if(!as){sheet('');return toast('Solo quien administra el taller puede subir fotos.');}
+  const porCod=new Map(S.tools.map(t=>[String(t.codigo||t.id).toUpperCase(),t]));
+  const plan=[],sin=[];
+  for(const f of files){
+    const cods=[...new Set((f.name.toUpperCase().match(/[A-Z]{2,4}-\d{2,4}/g)||[]))].filter(c=>porCod.has(c));
+    if(cods.length)plan.push({f,ts:cods.map(c=>porCod.get(c))});else sin.push(f.name);
+  }
+  if(!plan.length){sheet('');return toast('Ningún nombre de archivo coincide con un código del inventario.');}
+  let ok=0,err=0,n=0;const total=plan.reduce((a,p)=>a+p.ts.length,0);
+  const pinta=()=>sheet(`<h2>Cargando fotos…</h2><p><b>${n}</b> de ${total} herramientas listas.</p><p class="muted">No cierres la aplicación hasta que termine.</p>`);
+  pinta();
+  for(const p of plan){
+    try{
+      const blob=await resizeImg(p.f,1000);
+      const r=await as.upload(blob,{type:'image/jpeg'});
+      for(const t of p.ts){try{await S.db.doc('herramientas/'+t.id).update({fotoId:r.id});ok++;}catch(e){err++;}n++;pinta();}
+    }catch(e){err+=p.ts.length;n+=p.ts.length;pinta();}
+  }
+  sheet(`<h2>Fotos cargadas</h2><p><b>${ok}</b> herramientas con foto nueva${err?` · <b>${err}</b> con error`:''}.</p>${sin.length?`<p class="muted">Sin código reconocido (${sin.length}): ${esc(sin.slice(0,12).join(', '))}${sin.length>12?'…':''}</p>`:''}<div class="actions"><button class="btn primary" type="button" data-act="cerrar">Listo</button></div>`);
+}
 async function subirFoto(file){
   if(!file||!S.draft)return;
   const msg=document.getElementById('foto-msg');
@@ -2897,6 +2920,9 @@ Object.assign(actions,{
   rg:id=>{S.rg=id;render();},
   est:(id,b)=>{S.estOp=!S.estOp;const el=b&&b.closest('.estl');if(el){el.classList.toggle('op',S.estOp);b.setAttribute('aria-expanded',S.estOp);}else render();},
   'hist-op':()=>{S.histOp=!S.histOp;render();},
+  'fotos-lote':()=>{
+    sheet(`<h2>Cargar fotos en lote</h2><p>Elige varias fotos a la vez. Cada archivo debe llevar en el nombre el <b>código</b> de la herramienta, por ejemplo <span class="mono">ELE-006.jpg</span>.</p><p class="muted">Si una misma foto sirve para varias herramientas, pon todos los códigos en el nombre: <span class="mono">MAN-031_MAN-032.jpg</span>. La foto nueva reemplaza a la anterior.</p><div class="actions"><button class="btn" type="button" data-act="cerrar">Cancelar</button><button class="btn primary" type="button" data-act="fotos-lote-elegir">Elegir fotos</button></div>`);},
+  'fotos-lote-elegir':()=>{const i=document.getElementById('fotos-lote-f');if(!i)return;i.value='';i.onchange=()=>cargarFotosLote([...(i.files||[])]);i.click();},
   'json-exp':async()=>{
     const limpio=a=>(a||[]).map(x=>JSON.parse(JSON.stringify(x)));
     const data={app:'SIPRESTA',version:1,exportado:new Date().toISOString(),colecciones:{herramientas:limpio(S.tools),prestamos:limpio(S.loans),sanciones:limpio(S.sanc),usuarios:limpio(S.users),ajustes:[{id:'general',...JSON.parse(JSON.stringify(S.cfg||{}))}]}};
