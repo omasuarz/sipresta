@@ -1129,7 +1129,7 @@ function tallerAbierto(){try{return estadoTaller().abierto;}catch(e){return true
 /* ===== plazo inicial de 24 h (una sola vez, la hace el administrador) ===== */
 let mig24=false;
 async function migrarPlazo24(){
-  if(mig24||!S.cfg||S.cfg.plazo24||!S.db||!S.loaded||!S.loaded.tools)return;
+  if(mig24||!S.cfg||S.cfg.plazo24||!S.db||!S.loaded||!S.loaded.tools||!S.loaded.cfg)return;
   try{if(!esAdmin())return;}catch(e){return;}
   mig24=true;
   try{
@@ -3037,7 +3037,7 @@ async function boot(){
     render();},fail);
   db.collection('sanciones').onSnapshot(s=>{S.sanc=s.docs.map(d=>({id:d.id,...d.data()}));render();},fail);
   if(S.isStaff)db.collection('usuarios').onSnapshot(s=>{S.users=s.docs.map(d=>({id:d.id,...d.data()}));render();},fail);
-  db.doc('ajustes/general').onSnapshot(s=>{S.cfg={...DEF,...(s.exists?s.data():{})};render();},fail);
+  db.doc('ajustes/general').onSnapshot(s=>{S.cfg={...DEF,...(s.exists?s.data():{})};S.loaded.cfg=true;render();},fail);
   render();
   setInterval(()=>{if(!$('#sheet').firstChild)render();},60000);
 }
