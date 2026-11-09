@@ -1113,8 +1113,8 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 @keyframes sp-in{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:none}}
 @keyframes sp-car{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}
 @media (prefers-reduced-motion:reduce){#splash *{animation:none!important}}
-/* barras de selección: alineadas con el resto de la página */
-.main>.bulk{margin-left:auto;margin-right:auto}
+/* todo lo que va directo en la página queda centrado en la misma columna (barras, accesos rápidos, avisos) */
+@media(min-width:861px){.main>*{margin-left:auto!important;margin-right:auto!important}}
 </style>
 
 <div id="root"></div>
