@@ -1115,6 +1115,8 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 @media (prefers-reduced-motion:reduce){#splash *{animation:none!important}}
 /* todo lo que va directo en la página queda centrado en la misma columna (barras, accesos rápidos, avisos) */
 @media(min-width:861px){.main>*{margin-left:auto!important;margin-right:auto!important}}
+.foot-a{color:inherit;text-decoration:none;border-bottom:1px solid transparent;transition:border-color .15s,color .15s}
+.foot-a:hover,.foot-a:focus-visible{color:var(--ink);border-bottom-color:currentColor}
 </style>
 
 <div id="root"></div>
@@ -1276,7 +1278,7 @@ function footer(){
   const dato=(l,v)=>v?`<div class="foot-item"><span class="muted">${l}</span><span>${v}</span></div>`:'';
   const vacio=!c.correo&&!c.telefono&&!c.ubicacion&&!ig;
   const aviso=vacio?(S.isStaff&&S.view==='staff'?'Aún no hay datos de contacto. Agrégalos en Configuración.':'Datos de contacto próximamente.'):'';
-  return `<footer class="foot"><div class="foot-col"><span class="label">Institución</span><p class="foot-name">Taller de Herramientas y Materiales</p><p>Escuela de Arquitectura</p><p>Facultad de Arquitectura, Música y Diseño</p><p>Universidad de Talca</p>${c.horario?`<div class="foot-item foot-hor"><span class="label">Horario de atención</span><span>${horarioLineas(c.horario)}</span></div>`:''}</div>
+  return `<footer class="foot"><div class="foot-col"><span class="label">Institución</span><p class="foot-name">Taller de Herramientas y Materiales</p><p><a class="foot-a" href="http://www.arquitectura.utalca.cl/" target="_blank" rel="noopener">Escuela de Arquitectura</a></p><p><a class="foot-a" href="https://famd.utalca.cl/" target="_blank" rel="noopener">Facultad de Arquitectura, Música y Diseño</a></p><p><a class="foot-a" href="https://www.utalca.cl/" target="_blank" rel="noopener">Universidad de Talca</a></p>${c.horario?`<div class="foot-item foot-hor"><span class="label">Horario de atención</span><span>${horarioLineas(c.horario)}</span></div>`:''}</div>
   <div class="foot-col"><span class="label">Contacto del taller</span>${dato('Correo',esc(c.correo))}${dato('Teléfono',esc(c.telefono))}${dato('Ubicación',mapaLink(c))}${dato('Instagram',ig?`<a href="${esc(ig.url)}" target="_blank" rel="noopener noreferrer">${esc(ig.text)}</a>`:'')}${aviso?`<p class="muted">${aviso}</p>`:''}</div><div class="foot-cred"><p>Proyecto financiado por medio del concurso: <b>Transforma e Innova Digital</b> - Universidad de Talca - 2026.</p><p>Omar Suárez Molina · Raúl Basoalto Concha · Carlos Pinto Urtubia</p></div></footer>`;
 }
 function tabsHtml(list,cur,scope){
