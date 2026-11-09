@@ -25,7 +25,18 @@ service cloud.firestore {
     match /ajustes/{id}      { allow read: if dentro(); allow write: if equipo(); }
     match /sanciones/{id}    { allow read: if dentro(); allow write: if equipo(); }
     match /fotos/{id}        { allow read: if dentro(); allow write: if equipo(); }
-    match /usuarios/{id}     { allow read, write: if equipo(); }
+    // Lista de usuarios: la administra el equipo. Cada persona puede ver su propia ficha,
+    // crearla al entrar por primera vez (solo como usuario normal) y dejar registrado su ingreso.
+    match /usuarios/{id} {
+      allow read: if equipo() || (dentro() && resource.data.correo == correo());
+      allow create: if equipo() || (dentro() && id == request.auth.uid
+        && request.resource.data.correo == correo()
+        && request.resource.data.rol in ['estudiante', 'docente', 'funcionario']
+        && request.resource.data.habilitado == true);
+      allow update: if equipo() || (dentro() && resource.data.correo == correo()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uid', 'ultimoIngreso']));
+      allow delete: if equipo();
+    }
 
     // Nombre visible de cada persona (lo escribe cada uno al entrar)
     match /perfiles/{uid} {

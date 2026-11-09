@@ -1263,7 +1263,29 @@ sesion.then(function(u){
   if(!u)return;
   db.doc('perfiles/'+u.uid).set({name:u.displayName||correo(u).split('@')[0],actualizado:new Date().toISOString()},{merge:true}).catch(function(){});
   Promise.resolve(esDueno(u)||miEquipo(u).then(function(e){return e&&e.rol==='admin';})).then(function(admin){if(admin)sincronizarEquipo();});
+  fichaUsuario(u);
 });
+
+/* Cada persona que entra queda en la lista de Usuarios del taller.
+   Si el taller ya la tenía cargada (por ejemplo desde el CSV de matrícula), se enlaza por correo;
+   si no, se crea su ficha con nombre y correo, para que el encargado complete RUN, matrícula y carrera. */
+function fichaUsuario(u){
+  if(esDueno(u))return;
+  var mail=correo(u),dom=mail.split('@')[1]||'';
+  miEquipo(u).then(function(e){
+    if(e)return;
+    return db.collection('usuarios').where('correo','==',mail).limit(1).get().then(function(q){
+      var hoy=new Date().toISOString();
+      if(q.empty){
+        return db.doc('usuarios/'+u.uid).set({nombre:u.displayName||mail.split('@')[0],correo:mail,rol:dom==='utalca.cl'?'docente':'estudiante',
+          habilitado:true,creado:hoy,origen:'registro',uid:u.uid,ultimoIngreso:hoy});
+      }
+      var d=q.docs[0],x=d.data()||{};
+      if(x.uid!==u.uid||!x.ultimoIngreso||String(x.ultimoIngreso).slice(0,10)!==hoy.slice(0,10))
+        return d.ref.update({uid:u.uid,ultimoIngreso:hoy});
+    });
+  }).catch(function(e){try{console.warn('SIPRESTA: no se pudo registrar la ficha del usuario',e&&e.message);}catch(_){}});
+}
 
 /* Mantiene la colección «equipo» (correo → rol) a partir de los roles asignados en Usuarios.
    Las reglas de seguridad usan «equipo» para saber quién es encargado o administrador. */
