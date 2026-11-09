@@ -22,7 +22,8 @@ service cloud.firestore {
     function esMio() { return request.auth.uid == resource.data.estudianteId; }
 
     match /herramientas/{id} { allow read: if dentro(); allow write: if equipo(); }
-    match /ajustes/{id}      { allow read: if dentro(); allow write: if equipo(); }
+    // Configuración del taller (horario, contacto, reglas): visible también antes de iniciar sesión
+    match /ajustes/{id}      { allow read: if true; allow write: if equipo(); }
     match /sanciones/{id}    { allow read: if dentro(); allow write: if equipo(); }
     match /fotos/{id}        { allow read: if dentro(); allow write: if equipo(); }
     // Lista de usuarios: la administra el equipo. Cada persona puede ver su propia ficha,

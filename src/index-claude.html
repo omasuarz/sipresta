@@ -3131,7 +3131,10 @@ async function boot(){
   if(!db){S.status='sin-acceso';return paint();}
   S.db=db;S.user=user;
   S.uid=user?await user.id():null;
-  if(!S.uid){S.status='sin-sesion';return paint();}
+  if(!S.uid){S.status='sin-sesion';
+    /* sin sesión igual se muestran el contacto y el horario del taller */
+    try{db.doc('ajustes/general').onSnapshot(s=>{S.cfg={...DEF,...(s.exists?s.data():{})};paint();},()=>{});}catch(e){}
+    return paint();}
   S.isStaff=user?await user.canEdit():false;
   S.isOwner=user?await user.isOwner():false;
   const me=user?await user.me():{};
