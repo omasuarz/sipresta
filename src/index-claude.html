@@ -1194,7 +1194,10 @@ function estado(l){
 }
 const vivo=l=>{const e=estado(l);return e==='reservado'||e==='entregado'||e==='atrasado';};
 const ocupadas=id=>S.loans.filter(l=>l.herramientaId===id&&vivo(l)).length;
-const disp=t=>Math.max(0,(t.stock||0)-(t.fuera||0)-ocupadas(t.id));
+const clp=n=>'$'+Math.round(Number(n)||0).toLocaleString('es-CL');
+const ESTADOS=[['buena','Buena'],['mant','En mantención'],['baja','Dada de baja']];
+const estT=t=>(t&&(t.estado==='mant'||t.estado==='baja'))?t.estado:'buena';
+const disp=t=>estT(t)!=='buena'?0:Math.max(0,(t.stock||0)-(t.fuera||0)-ocupadas(t.id));
 function sancionDe(id,texto){
   const tx=(texto||'').trim().toLowerCase();
   return S.sanc.find(s=>s.activa&&ts(s.hasta)>Date.now()&&((id&&s.estudianteId===id)||(tx&&s.estudianteTexto&&s.estudianteTexto.trim().toLowerCase()===tx)));
@@ -1363,7 +1366,7 @@ function reglasVistas(){return !!S.reglasOk||S.loans.some(l=>l.estudianteId===S.
 function debeDevolver(r){const ls=S.loans.filter(l=>{const e=estado(l);return (e==='entregado'||e==='atrasado')&&l.herramientaId===r.tool.id;});if(!ls.length)return false;const uid=r.unit?unitId(r.unit):'';if(uid)return ls.some(l=>(l.unidadBien||l.unidadSerie)===uid);return disp(r.tool)<=0;}
 async function entregarReserva(id){const l=S.loans.find(x=>x.id===id);if(!l)return toast('No se encontró esa reserva.');const e=estado(l);if(e!=='reservado')return toast(e==='expirada'?'Esa reserva ya venció. Haz un préstamo nuevo.':'Esa reserva ya no está pendiente.');sheet('');await actions.entregar(id);}
 function catalogo(){
-  const tools=S.tools.filter(t=>t.activa!==false);
+  const tools=S.tools.filter(t=>t.activa!==false&&estT(t)!=='baja');
   const cats=['Todas',...[...new Set(tools.map(t=>t.categoria).filter(Boolean))].sort()];
   const q=S.q.trim().toLowerCase();
   const list=tools.filter(t=>(S.cat==='Todas'||t.categoria===S.cat)&&(!q||(t.nombre+' '+(t.marca||'')+' '+(t.modelo||'')+' '+(t.codigo||'')+' '+(t.categoria||'')).toLowerCase().includes(q)))
@@ -1383,7 +1386,7 @@ function catalogo(){
     const d=disp(t);
     const estadoPill=d===0?`<span class="pill quiet">${ico('x')}Agotada</span>`:d===1?`<span class="pill okk line">${ico('alerta')}Última unidad</span>`:`<span class="pill okk">${ico('ok')}Disponible</span>`;
     const sub=[t.marca,t.modelo].filter(Boolean).join(' · ');
-    if(1)return `<button type="button" class="tile ${d?'':'agotada'}" style="--cat:${catColor(t.categoria)}" data-act="ficha" data-id="${t.id}"><span class="tile-f">${t.fotoId?`<img src="${fotoUrl(t.fotoId)}" alt="" loading="lazy">`:ilustracion(t)}${d===0?`<span class="tile-st no">${ico('x')}Agotada</span>`:d===1?`<span class="tile-st ult">${ico('alerta')}Última</span>`:`<span class="tile-st ok">${ico('ok')}Disponible</span>`}</span><span class="tile-n">${esc(t.nombre)}</span><span class="tile-d">${puntos(d,t.stock||0)}<span>${d?`${d} de ${t.stock||0}`:'Agotada'}</span></span></button>`;
+    if(1)return `<button type="button" class="tile ${d?'':'agotada'}" style="--cat:${catColor(t.categoria)}" data-act="ficha" data-id="${t.id}"><span class="tile-f">${t.fotoId?`<img src="${fotoUrl(t.fotoId)}" alt="" loading="lazy">`:ilustracion(t)}${d===0?`<span class="tile-st no">${ico('x')}${estT(t)==='mant'?'En mantención':'Agotada'}</span>`:d===1?`<span class="tile-st ult">${ico('alerta')}Última</span>`:`<span class="tile-st ok">${ico('ok')}Disponible</span>`}</span><span class="tile-n">${esc(t.nombre)}</span><span class="tile-d">${puntos(d,t.stock||0)}<span>${d?`${d} de ${t.stock||0}`:'Agotada'}</span></span></button>`;
     return `<article class="card cx ${d?'':'agotada'}" style="--cat:${catColor(t.categoria)}">
       <div class="card-photo${t.fotoId?'':' generic'}${d&&!bl?' cx-tap':''}"${d&&!bl?` data-act="reservar" data-id="${t.id}" role="button" tabindex="0" aria-label="Reservar ${esc(t.nombre)}"`:''}>${t.fotoId?`<img src="${fotoUrl(t.fotoId)}" alt="${esc(t.nombre)}" loading="lazy">`:ilustracion(t)+'<span class="ref">Foto pendiente</span>'}<span class="cx-pill">${estadoPill}</span></div>
       <div class="card-body">
@@ -1530,7 +1533,7 @@ function staffHoy(){
   if(F!=='en'&&F!=='atr')h+=`<section class="panel-list"><h3>Reservas por retirar <span class="mono muted">${por.length}</span></h3>${por.length?por.map(x=>loanRow(x.l,{persona:1,acts:l=>`<button class="btn small" data-act="aviso" data-id="${l.id}">Avisar</button><button class="btn primary small" data-act="entregar" data-id="${l.id}">Entregar</button><button class="btn small" data-act="cancelar" data-id="${l.id}">Cancelar</button>`})).join(''):'<p class="empty">No hay reservas pendientes.</p>'}</section>`;
   return h;
 }
-const invOk=t=>{const FI=S.fi;if(!FI)return true;if(FI==='sinfoto')return !t.fotoId&&t.activa!==false;if(FI==='oculta')return t.activa===false;if(FI==='disp')return disp(t)>0;if(FI==='mnt')return (t.fuera||0)>0;return Math.max(0,(t.stock||0)-Math.min(t.fuera||0,t.stock||0)-disp(t))>0;};
+const invOk=t=>{const FI=S.fi;if(!FI)return true;if(FI==='sinfoto')return !t.fotoId&&t.activa!==false;if(FI==='oculta')return t.activa===false;if(FI==='disp')return disp(t)>0;if(FI==='mnt')return (t.fuera||0)>0||estT(t)==='mant';if(FI==='buena')return estT(t)==='buena';if(FI==='baja')return estT(t)==='baja';return Math.max(0,(t.stock||0)-Math.min(t.fuera||0,t.stock||0)-disp(t))>0;};
 function staffInventario(){
   const q=S.qi.trim().toLowerCase();
   const all=[...S.tools].sort((a,b)=>(a.categoria||'').localeCompare(b.categoria||'','es')||a.nombre.localeCompare(b.nombre,'es'));
@@ -1542,18 +1545,18 @@ function staffInventario(){
   const hayF=S.fic||S.fiu||S.fiv||FI;
   const fc=(k,l,c)=>`<button type="button" class="chip st ${c}" data-act="fi" data-id="${k}" aria-pressed="${FI===k}">${l}</button>`;
   if(S.fi==='sinfoto'){const cnt={};S.loans.forEach(l=>{cnt[l.herramientaId]=(cnt[l.herramientaId]||0)+1;});all.sort((a,b)=>(cnt[b.id]||0)-(cnt[a.id]||0)||a.nombre.localeCompare(b.nombre,'es'));}
-  const mos=[['sinfoto','Sin foto (más pedidas primero)'],['disp','Disponibles'],['act','Prestadas o reservadas'],['mnt','En mantención'],['oculta','Ocultas del catálogo']];
+  const mos=[['sinfoto','Sin foto (más pedidas primero)'],['disp','Disponibles'],['act','Prestadas o reservadas'],['buena','En buen estado'],['mnt','En mantención'],['baja','Dadas de baja'],['oculta','Ocultas del catálogo']];
   let h=`<div class="filters"><input id="qi" class="search" type="search" placeholder="Buscar por nombre, marca, modelo, serie o código de bienes" value="${esc(S.qi)}" aria-label="Buscar en el inventario"></div><div class="fsels">${fsel('fis','Mostrar',mos,S.fi)}${fsel('fic','Categoría',cats,S.fic)}${(S.fi||S.fic)?'<button class="btn small" type="button" data-act="fi-limpiar">Quitar filtros</button>':''}<button class="btn small" type="button" data-act="bulk-modo" style="margin-left:auto">${S.bulk?'Terminar edición múltiple':'Editar varias'}</button></div>`;
   if(!all.length)return h+`<div class="note">El inventario está vacío. Agrega la primera herramienta para que aparezca en el catálogo de los estudiantes.</div>`;
   if(!list.length)return h+`<div class="note">Ninguna herramienta coincide con la búsqueda.</div>`;
   if(S.bulk)h+=`<div class="bulk${nSel?' on':''}"><label class="chk"><input type="checkbox" data-act="sel-todas" ${todasSel?'checked':''}> Seleccionar las ${list.length} ${list.length===1?'visible':'visibles'}</label>${nSel?`<span class="bulk-n"><b>${nSel}</b> ${nSel===1?'seleccionada':'seleccionadas'}</span><span class="bulk-a"><button class="btn small" type="button" data-act="bulk-cat">Cambiar categoría</button><button class="btn small" type="button" data-act="bulk-vis" data-id="mostrar">Mostrar en catálogo</button><button class="btn small" type="button" data-act="bulk-vis" data-id="ocultar">Ocultar del catálogo</button><button class="btn small" type="button" data-act="sel-nada">Quitar selección</button></span>`:'<span class="muted bulk-h">Marca varias herramientas para cambiarles la categoría o la visibilidad a la vez.</span>'}</div>`;
   h+=`<section class="panel-list inv"><h3>Inventario <span class="mono muted">${list.length} de ${all.length}</span></h3>${list.map(t=>{
     const us=unidadesDe(t),mm=[t.marca,t.modelo].filter(Boolean).join(' · ');
-    const tabla=us.length?`<details class="units"><summary>Ver ${us.length} ${us.length===1?'unidad':'unidades'}</summary><div class="ut-wrap"><table class="ut"><thead><tr><th>N°</th><th>Marca</th><th>Modelo</th><th>Número de serie</th><th>Código de bienes UTALCA</th><th>Estado</th></tr></thead><tbody>${us.map((u,i)=>`<tr><td>${i+1}</td><td>${esc(u.marca||t.marca||'—')}</td><td>${esc(u.modelo||t.modelo||'—')}</td><td>${esc(u.serie||'—')}</td><td>${esc(u.bien||'—')}</td><td>${u.fuera?'En mantención':'Operativa'}</td></tr>`).join('')}</tbody></table></div></details>`:'';
-    return `<div class="row${S.sel[t.id]?' selrow':''}"><div class="row-lead">${S.bulk?`<input type="checkbox" class="rsel" data-act="sel" data-id="${t.id}" ${S.sel[t.id]?'checked':''} aria-label="Seleccionar ${esc(t.nombre)}">`:''}${t.fotoId?`<img class="thumb" src="${fotoUrl(t.fotoId)}" alt="" loading="lazy">`:`<span class="thumb">${ilustracion(t)}</span>`}<div class="row-main"><span class="row-title">${esc(t.nombre)} <span class="mono muted">${esc(t.codigo||'')}</span> ${t.activa===false?'<span class="pill quiet">Oculta</span>':''}${t.destacada?' <span class="pill brown">Destacada</span>':''}</span>
+    const tabla=us.length?`<details class="units"><summary>Ver ${us.length} ${us.length===1?'unidad':'unidades'}</summary><div class="ut-wrap"><table class="ut"><thead><tr><th>N°</th><th>Marca</th><th>Modelo</th><th>Número de serie</th><th>Código de bienes UTALCA</th><th>Estado</th></tr></thead><tbody>${us.map((u,i)=>`<tr><td>${i+1}</td><td>${esc(u.marca||t.marca||'—')}</td><td>${esc(u.modelo||t.modelo||'—')}</td><td>${esc(u.serie||'—')}</td><td>${esc(u.bien||'—')}</td><td>${u.fuera?'En mantención':'Buena'}</td></tr>`).join('')}</tbody></table></div></details>`:'';
+    return `<div class="row${S.sel[t.id]?' selrow':''}"><div class="row-lead">${S.bulk?`<input type="checkbox" class="rsel" data-act="sel" data-id="${t.id}" ${S.sel[t.id]?'checked':''} aria-label="Seleccionar ${esc(t.nombre)}">`:''}${t.fotoId?`<img class="thumb" src="${fotoUrl(t.fotoId)}" alt="" loading="lazy">`:`<span class="thumb">${ilustracion(t)}</span>`}<div class="row-main"><span class="row-title">${esc(t.nombre)} <span class="mono muted">${esc(t.codigo||'')}</span> ${t.activa===false?'<span class="pill quiet">Oculta</span>':''}${estT(t)==='mant'?' <span class="pill late">En mantención</span>':''}${estT(t)==='baja'?' <span class="pill quiet">Dada de baja</span>':''}${t.destacada?' <span class="pill brown">Destacada</span>':''}</span>
       ${mm?`<span>${esc(mm)}</span>`:''}
-      <span class="muted">${esc(t.categoria||'Sin categoría')} · stock ${t.stock||0}${t.fuera?` · ${t.fuera} en mantención`:''} · plazo ${t.plazoHoras||24} h${t.ubicacion?' · '+esc(t.ubicacion):''}</span>${tabla}</div></div>
-      <div class="row-acts">${slots(t)}<span class="mono">${disp(t)}/${t.stock||0}</span><button class="btn small" data-act="mant" data-id="${t.id}">Mantención${(t.mantenciones||[]).some(m=>m.estado!=='cerrada')?' ●':''}</button><button class="btn small" data-act="editar-tool" data-id="${t.id}">Editar</button></div></div>`;}).join('')}</section>`;
+      <span class="muted">${esc(t.categoria||'Sin categoría')} · stock ${t.stock||0}${t.fuera?` · ${t.fuera} en mantención`:''} · plazo ${t.plazoHoras||24} h${t.ubicacion?' · '+esc(t.ubicacion):''}${t.valor?' · '+clp(t.valor)+(t.stock>1?' c/u':''):''}</span>${tabla}</div></div>
+      <div class="row-acts">${slots(t)}<span class="mono">${disp(t)}/${t.stock||0}</span><button class="btn small" data-act="mant" data-id="${t.id}">Mantención${(t.mantenciones||[]).some(m=>m.estado!=='cerrada')?' ●':''}</button><button class="btn small" data-act="editar-tool" data-id="${t.id}">Editar</button>${esAdmin()?`<button class="btn small danger" data-act="eliminar-tool" data-id="${t.id}" aria-label="Eliminar ${esc(t.nombre)}">Eliminar</button>`:''}</div></div>`;}).join('')}</section>`;
   return h;
 }
 
@@ -1590,7 +1593,7 @@ function aplicarEscaneo(raw){
 const unitId=u=>u?(u.bien||u.serie||''):'';
 function unitOut(t,u){const id=unitId(u);return !!id&&S.loans.some(l=>vivo(l)&&l.herramientaId===t.id&&(l.unidadBien||l.unidadSerie)===id);}
 function addItem(t,u){
-  if(t.activa===false)return toast(t.nombre+' no está disponible para préstamo.');
+  if(t.activa===false||estT(t)!=='buena')return toast(t.nombre+(estT(t)==='baja'?' está dada de baja.':estT(t)==='mant'?' está en mantención.':' no está disponible para préstamo.'));
   const enCarro=S.cart.filter(i=>i.id===t.id).length;
   if(disp(t)-enCarro<=0)return toast(t.nombre+' no tiene unidades disponibles.');
   const us=unidadesDe(t);
@@ -2576,6 +2579,12 @@ const actions={
   },
   'eliminar-user-ok':async id=>{if(!esAdmin())return;await col('usuarios').doc(id).delete();sheet('');toast('Usuario eliminado del registro.');},
   'nueva-tool':()=>formTool(null),
+  'eliminar-tool':id=>{if(!esAdmin())return toast('Solo el administrador puede eliminar herramientas.');
+    const t=T(id);if(!t)return;const act=S.loans.filter(l=>l.herramientaId===id&&vivo(l)).length;
+    if(act)return toast(t.nombre+' tiene '+act+(act===1?' préstamo o reserva activa':' préstamos o reservas activas')+'. '+(act===1?'Regístrala o cancélala':'Regístralas o cancélalas')+' antes de eliminarla.');
+    S.draft=null;sheet(`<h2>Eliminar ${esc(t.nombre)}</h2><p>Se borrará <b>${esc(t.nombre)}</b> ${t.codigo?'(<span class="mono">'+esc(t.codigo)+'</span>) ':''}del inventario. El historial de préstamos se conserva.</p><p class="muted">Si la herramienta solo dejó de usarse, puedes marcarla como <b>Dada de baja</b> en lugar de eliminarla, para que quede registro.</p>
+      <div class="actions">${close}<button class="btn danger" type="button" data-act="eliminar-tool-ok" data-id="${id}">Sí, eliminar</button></div>`);},
+  'eliminar-tool-ok':async id=>{if(!esAdmin())return;await col('herramientas').doc(id).delete();delete S.sel[id];sheet('');toast('Herramienta eliminada del inventario.');},
   'editar-tool':id=>formTool(T(id)),
   'foto-elegir':()=>{const i=document.getElementById('t-foto');if(i)i.click();},
   'foto-quitar':()=>{leerForm();S.draft.fotoId='';pintarForm();},
@@ -2602,7 +2611,7 @@ const actions={
     const n=d.unidades.length,fu=d.unidades.filter(u=>u.fuera).length;
     const stock=n?n:d.stock,extra=n?d.fueraExtra:0,fuera=Math.min(stock,n?fu+extra:d.fuera);
     const doc={nombre:d.nombre,marca:d.marca,modelo:d.modelo,categoria:d.categoria,codigo:d.codigo.toUpperCase(),descripcion:d.descripcion,ubicacion:d.ubicacion,
-      stock,fuera,fueraExtra:extra,plazoHoras:Math.max(1,d.plazoHoras||24),activa:d.activa,destacada:!!d.destacada,fotoId:d.fotoId||null,unidades:d.unidades,epp:Array.isArray(d.epp)?d.epp:eppSugerido(d)};
+      stock,fuera,fueraExtra:extra,plazoHoras:Math.max(1,d.plazoHoras||24),estado:d.estado||'buena',valor:d.valor||0,activa:d.activa,destacada:!!d.destacada,fotoId:d.fotoId||null,unidades:d.unidades,epp:Array.isArray(d.epp)?d.epp:eppSugerido(d)};
     if(doc.categoria&&esAdmin()){const cl=catList(),ex=cl.find(x=>x.toLowerCase()===doc.categoria.toLowerCase());if(ex)doc.categoria=ex;else{S.cfg.categorias=[...cl,doc.categoria];await S.db.doc('ajustes/general').set({...S.cfg});}}
     if(d.id)await S.db.doc('herramientas/'+d.id).update(doc);else await col('herramientas').add(doc);
     S.draft=null;sheet('');toast('Inventario actualizado.');
@@ -2772,7 +2781,7 @@ function nuevoDraft(t){
   const x=t||{};
   const auto=!t;
   return {id:t?t.id:'',codAuto:auto,nombre:x.nombre||'',marca:x.marca||'',modelo:x.modelo||'',categoria:x.categoria||'',codigo:auto?codigoSiguiente(''):(x.codigo||''),descripcion:x.descripcion||'',ubicacion:x.ubicacion||'',
-    stock:t?(x.stock||0):1,fuera:x.fuera||0,epp:Array.isArray(x.epp)?[...x.epp]:undefined,fueraExtra:x.fueraExtra||0,plazoHoras:x.plazoHoras||24,activa:x.activa!==false,destacada:!!x.destacada,fotoId:x.fotoId||'',
+    stock:t?(x.stock||0):1,fuera:x.fuera||0,epp:Array.isArray(x.epp)?[...x.epp]:undefined,fueraExtra:x.fueraExtra||0,plazoHoras:x.plazoHoras||24,estado:estT(x),valor:x.valor||0,activa:x.activa!==false,destacada:!!x.destacada,fotoId:x.fotoId||'',
     unidades:unidadesDe(x).map(u=>({serie:u.serie||'',bien:u.bien||'',marca:u.marca||'',modelo:u.modelo||'',fuera:!!u.fuera}))};
 }
 function leerForm(){
@@ -2780,7 +2789,7 @@ function leerForm(){
   const txt=(k,id)=>{const e=document.getElementById(id);if(e)d[k]=e.value.trim();};
   const num=(k,id)=>{const e=document.getElementById(id);if(e)d[k]=Math.max(0,parseInt(e.value,10)||0);};
   txt('nombre','t-nombre');txt('marca','t-marca');txt('modelo','t-modelo');txt('categoria','t-cat');if(d.categoria==='__nueva'){const nc=document.getElementById('t-catnew');d.categoria=nc?nc.value.trim():'';}txt('codigo','t-cod');txt('descripcion','t-desc');txt('ubicacion','t-ubi');
-  num('stock','t-stock');num('fuera','t-fuera');num('fueraExtra','t-extra');num('plazoHoras','t-plazo');
+  num('stock','t-stock');num('fuera','t-fuera');{const e=document.getElementById('t-estado');if(e)d.estado=e.value;const v=document.getElementById('t-valor');if(v)d.valor=Math.max(0,parseInt(String(v.value).replace(/\D/g,''),10)||0);}num('fueraExtra','t-extra');num('plazoHoras','t-plazo');
   const act=document.getElementById('t-activa');if(act)d.activa=act.checked;
   if(document.getElementById('t-epp-lentes'))d.epp=EPP.map(e=>e[0]).filter(k=>{const c=document.getElementById('t-epp-'+k);return c&&c.checked;});
   const dst=document.getElementById('t-dest');if(dst)d.destacada=dst.checked;
@@ -2812,12 +2821,14 @@ function pintarForm(focusId){
     <div class="two"><div class="field"><label for="t-cat">Categoría</label>${(()=>{const cl=catList();if(d.categoria&&!cl.includes(d.categoria))cl.push(d.categoria);return `<select id="t-cat"><option value="">Sin categoría</option>${cl.map(c=>`<option value="${esc(c)}" ${c===d.categoria?'selected':''}>${esc(c)}</option>`).join('')}${esAdmin()?'<option value="__nueva">+ Nueva categoría…</option>':''}</select><input id="t-catnew" hidden placeholder="Nombre de la nueva categoría" autocomplete="off" style="margin-top:6px" aria-label="Nombre de la nueva categoría">`;})()}</div>
     <div class="field"><label for="t-cod">Código interno del taller${d.codAuto?' <span class="muted cod-auto" title="Se asigna según la categoría. Puedes cambiarlo.">· automático</span>':''}</label><input id="t-cod" class="mono" value="${esc(d.codigo)}" placeholder="Ej.: MAN-001" autocomplete="off"></div>
     <div class="field"><label for="t-plazo">Plazo de devolución (horas)</label><input id="t-plazo" type="number" min="1" value="${d.plazoHoras}"></div>
-    ${us.length?`<div class="field"><label>Unidades en total</label><input value="${us.length}" disabled></div>`:`<div class="field"><label for="t-stock">Unidades en total</label><input id="t-stock" type="number" min="0" value="${d.stock}"></div>`}</div>
-    <details class="ficha"${(us.length||d.marca||d.modelo||d.descripcion||d.ubicacion||S.fichaOpen)?' open':''}><summary>Ficha técnica <span class="muted">marca, modelo, ubicación, series y código de bienes</span></summary>
+    ${us.length?`<div class="field"><label>Unidades en total</label><input value="${us.length}" disabled></div>`:`<div class="field"><label for="t-stock">Unidades en total</label><input id="t-stock" type="number" min="0" value="${d.stock}"></div>`}
+    <div class="field"><label for="t-estado">Estado</label><select id="t-estado">${ESTADOS.map(([k,l])=>`<option value="${k}" ${d.estado===k?'selected':''}>${l}</option>`).join('')}</select></div></div>
+    <details class="ficha"${(us.length||d.marca||d.modelo||d.descripcion||d.ubicacion||d.valor||S.fichaOpen)?' open':''}><summary>Ficha técnica <span class="muted">marca, modelo, ubicación, series y código de bienes</span></summary>
     <div class="ficha-in"><div class="two"><div class="field"><label for="t-marca">Marca</label><input id="t-marca" value="${esc(d.marca)}"></div>
     <div class="field"><label for="t-modelo">Modelo</label><input id="t-modelo" value="${esc(d.modelo)}"></div></div>
     <div class="field"><label for="t-desc">Descripción (opcional)</label><input id="t-desc" value="${esc(d.descripcion)}"></div>
-    <div class="field"><label for="t-ubi">Ubicación en el taller</label><input id="t-ubi" value="${esc(d.ubicacion)}" placeholder="Ej.: Tablero B"></div>
+    <div class="two"><div class="field"><label for="t-ubi">Ubicación en el taller</label><input id="t-ubi" value="${esc(d.ubicacion)}" placeholder="Ej.: Tablero B"></div>
+    <div class="field"><label for="t-valor">Valor monetario por unidad (CLP)</label><input id="t-valor" inputmode="numeric" value="${d.valor?Number(d.valor).toLocaleString('es-CL'):''}" placeholder="Ej.: 45.990" autocomplete="off"></div></div>
     <fieldset><legend class="label">Unidades${us.length?' ('+us.length+')':''}</legend>
       <p class="muted">Cada unidad física puede tener su número de serie y código de bienes UTALCA. Es opcional: si no las detallas, basta con la cantidad de arriba.</p>
       ${filas}
@@ -2828,7 +2839,7 @@ function pintarForm(focusId){
       <div class="epp-g">${EPP.map(([k,n])=>`<label class="chk epp-o"><input type="checkbox" id="t-epp-${k}" ${eppDe(d).includes(k)?'checked':''}> ${icoEpp(k)}${esc(n)}</label>`).join('')}</div></fieldset>
     <label class="chk"><input type="checkbox" id="t-activa" ${d.activa?'checked':''}> Visible en el catálogo</label>
     <label class="chk"><input type="checkbox" id="t-dest" ${d.destacada?'checked':''}> Destacada: aparece arriba en el catálogo</label>
-    <div class="actions">${close}<button class="btn primary" data-act="guardar-tool">Guardar</button></div>`,'wide');
+    <div class="actions">${d.id&&esAdmin()?`<button class="btn danger" type="button" data-act="eliminar-tool" data-id="${d.id}" style="margin-right:auto">Eliminar herramienta</button>`:''}${close}<button class="btn primary" data-act="guardar-tool">Guardar</button></div>`,'wide');
   const np=document.querySelector('#sheet .panel');if(np)np.scrollTop=sc;
   if(focusId){const e=document.getElementById(focusId);if(e)e.focus({preventScroll:false});}
 }
@@ -2970,11 +2981,11 @@ function datosCSV(k){
   const lim=S.rp==='all'?0:Date.now()-parseInt(S.rp,10)*864e5;
   if(k==='prestamos')return [['Fecha reserva','Estudiante','Herramienta','Código','Unidad','Estado','Entregado','Vence','Devuelto','Condición','Observación']].concat(S.loans.filter(l=>ts(l.creado)>=lim).sort((a,b)=>ts(a.creado)-ts(b.creado)).map(l=>{const t=T(l.herramientaId);return [fmtFull(l.creado),l.estudianteTexto||persona(l),t?t.nombre:'',t?t.codigo:'',l.unidadBien||l.unidadSerie||'',estado(l),fmtFull(l.entregadoEn),fmtFull(l.venceEn),fmtFull(l.devueltoEn),l.condicion==='dano'?'Con daño':(l.condicion==='ok'?'Buen estado':''),l.nota||''];}));
   if(k==='inventario'){
-    const hd=['Código','Herramienta','Marca','Modelo','Categoría','N° unidad','Número de serie','Código de bienes UTALCA','Estado de la unidad','Stock total','Disponibles','En mantención','Plazo (h)','Ubicación'];
+    const hd=['Código','Herramienta','Marca','Modelo','Categoría','N° unidad','Número de serie','Código de bienes UTALCA','Estado de la unidad','Stock total','Disponibles','En mantención','Plazo (h)','Ubicación','Estado de la herramienta','Valor por unidad (CLP)'];
     const rows=[];
     [...S.tools].sort((a,b)=>(a.categoria||'').localeCompare(b.categoria||'','es')||a.nombre.localeCompare(b.nombre,'es')).forEach(t=>{
-      const us=unidadesDe(t),base=[t.codigo||'',t.nombre,t.marca||'',t.modelo||'',t.categoria||''],fin=[t.stock||0,disp(t),t.fuera||0,t.plazoHoras||24,t.ubicacion||''];
-      if(us.length)us.forEach((u,i)=>rows.push([...base,i+1,u.serie||'',u.bien||'',u.fuera?'En mantención':'Operativa',...fin]));
+      const us=unidadesDe(t),base=[t.codigo||'',t.nombre,t.marca||'',t.modelo||'',t.categoria||''],fin=[t.stock||0,disp(t),t.fuera||0,t.plazoHoras||24,t.ubicacion||'',(ESTADOS.find(e=>e[0]===estT(t))||[])[1],t.valor||''];
+      if(us.length)us.forEach((u,i)=>rows.push([...base,i+1,u.serie||'',u.bien||'',u.fuera?'En mantención':'Buena',...fin]));
       else rows.push([...base,'','','','',...fin]);});
     return [hd,...rows];}
   if(k==='usuarios')return [['Nombre','RUN','Matrícula','Carrera','Correo','Habilitado','Máximo de herramientas','Excepción hasta','Motivo excepción']].concat(S.users.map(u=>[u.nombre||'',u.run||'',u.matricula||'',u.carrera||'',u.correo||'',u.habilitado===false?'No':'Sí',limiteDe(u),u.hasta||'',u.motivoExc||'']));
