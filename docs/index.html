@@ -1115,6 +1115,7 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 @media (prefers-reduced-motion:reduce){#splash *{animation:none!important}}
 /* todo lo que va directo en la página queda centrado en la misma columna (barras, accesos rápidos, avisos) */
 @media(min-width:861px){.main>*{margin-left:auto!important;margin-right:auto!important}}
+.cod-auto{font-weight:400}
 .foot-a{color:inherit;text-decoration:none;border-bottom:1px solid transparent;transition:border-color .15s,color .15s}
 .foot-a:hover,.foot-a:focus-visible{color:var(--ink);border-bottom-color:currentColor}
 @media(max-width:860px){.side-btn.salir{display:none}}
@@ -2828,6 +2829,9 @@ const actions={
   'guardar-tool':async()=>{
     leerForm();const d=S.draft;if(!d)return;
     if(!d.nombre)return toast('Escribe el nombre de la herramienta.');
+    if(!d.codigo)d.codigo=codigoSiguiente(d.categoria);
+    {const cu=d.codigo.toUpperCase(),otra=S.tools.find(t=>t.id!==d.id&&String(t.codigo||'').toUpperCase()===cu);
+      if(otra){if(d.codAuto&&!d.id){d.codigo=codigoSiguiente(d.categoria);}else return toast('El código '+cu+' ya lo usa "'+otra.nombre+'".');}}
     const usados=new Map();
     S.tools.filter(t=>t.id!==d.id).forEach(t=>unidadesDe(t).forEach(u=>{if(u.bien)usados.set(u.bien.toLowerCase(),t.nombre);}));
     const bienes=new Set(),series=new Set();
@@ -2987,9 +2991,32 @@ async function subirFoto(file){
     toast(err&&err.code==='quota_or_state'?'No hay espacio para más fotos.':'No se pudo subir la foto. Prueba con otra imagen.');
   }
 }
+/* ---------- código automático ---------- */
+const RX_COD=/^([A-Z]{2,4})-(\d+)$/;
+function prefijoCat(cat){
+  const m=new Map();
+  S.tools.forEach(t=>{if((t.categoria||'')!==(cat||''))return;const r=RX_COD.exec(String(t.codigo||'').toUpperCase());if(r)m.set(r[1],(m.get(r[1])||0)+1);});
+  let best='',n=0;m.forEach((v,k)=>{if(v>n){best=k;n=v;}});
+  if(best)return best;
+  const p=norm(cat).replace(/[^a-z]/g,'').slice(0,3).toUpperCase();
+  return p.length>=2?p:'HER';
+}
+function codigoSiguiente(cat,extra){
+  const p=prefijoCat(cat);let max=0,w=0;
+  const ver=c=>{const r=RX_COD.exec(String(c||'').toUpperCase());if(r&&r[1]===p){max=Math.max(max,parseInt(r[2],10));w=Math.max(w,r[2].length);}};
+  S.tools.forEach(t=>ver(t.codigo));if(extra)extra.forEach(ver);
+  return p+'-'+String(max+1).padStart(w||3,'0');
+}
+function codAutoRefrescar(){
+  const d=S.draft;if(!d||!d.codAuto)return;
+  const sel=document.getElementById('t-cat'),nc=document.getElementById('t-catnew'),inp=document.getElementById('t-cod');if(!sel||!inp)return;
+  const cat=sel.value==='__nueva'?(nc?nc.value.trim():''):sel.value;
+  inp.value=d.codigo=codigoSiguiente(cat);
+}
 function nuevoDraft(t){
   const x=t||{};
-  return {id:t?t.id:'',nombre:x.nombre||'',marca:x.marca||'',modelo:x.modelo||'',categoria:x.categoria||'',codigo:x.codigo||'',descripcion:x.descripcion||'',ubicacion:x.ubicacion||'',
+  const auto=!t;
+  return {id:t?t.id:'',codAuto:auto,nombre:x.nombre||'',marca:x.marca||'',modelo:x.modelo||'',categoria:x.categoria||'',codigo:auto?codigoSiguiente(''):(x.codigo||''),descripcion:x.descripcion||'',ubicacion:x.ubicacion||'',
     stock:t?(x.stock||0):1,fuera:x.fuera||0,epp:Array.isArray(x.epp)?[...x.epp]:undefined,fueraExtra:x.fueraExtra||0,plazoHoras:x.plazoHoras||24,activa:x.activa!==false,destacada:!!x.destacada,fotoId:x.fotoId||'',
     unidades:unidadesDe(x).map(u=>({serie:u.serie||'',bien:u.bien||'',marca:u.marca||'',modelo:u.modelo||'',fuera:!!u.fuera}))};
 }
@@ -3028,7 +3055,7 @@ function pintarForm(focusId){
     <div class="foto-box">${foto}<div class="foto-acts"><button class="btn small" type="button" data-act="foto-elegir">${d.fotoId?'Cambiar foto':'Subir foto'}</button><input id="t-foto" type="file" accept="image/*" hidden>${d.fotoId?'<button class="btn small" type="button" data-act="foto-quitar">Quitar foto</button>':''}<span class="muted" id="foto-msg">${d.fotoId?'':'Imagen referencial hasta que subas una foto.'}</span></div></div>
     <div class="field"><label for="t-nombre">Nombre de la herramienta</label><input id="t-nombre" value="${esc(d.nombre)}"></div>
     <div class="two"><div class="field"><label for="t-cat">Categoría</label>${(()=>{const cl=catList();if(d.categoria&&!cl.includes(d.categoria))cl.push(d.categoria);return `<select id="t-cat"><option value="">Sin categoría</option>${cl.map(c=>`<option value="${esc(c)}" ${c===d.categoria?'selected':''}>${esc(c)}</option>`).join('')}${esAdmin()?'<option value="__nueva">+ Nueva categoría…</option>':''}</select><input id="t-catnew" hidden placeholder="Nombre de la nueva categoría" autocomplete="off" style="margin-top:6px" aria-label="Nombre de la nueva categoría">`;})()}</div>
-    <div class="field"><label for="t-cod">Código interno del taller</label><input id="t-cod" class="mono" value="${esc(d.codigo)}" placeholder="Ej.: COR-01"></div>
+    <div class="field"><label for="t-cod">Código interno del taller${d.codAuto?' <span class="muted cod-auto" title="Se asigna según la categoría. Puedes cambiarlo.">· automático</span>':''}</label><input id="t-cod" class="mono" value="${esc(d.codigo)}" placeholder="Ej.: MAN-001" autocomplete="off"></div>
     <div class="field"><label for="t-plazo">Plazo de devolución (horas)</label><input id="t-plazo" type="number" min="1" value="${d.plazoHoras}"></div>
     ${us.length?`<div class="field"><label>Unidades en total</label><input value="${us.length}" disabled></div>`:`<div class="field"><label for="t-stock">Unidades en total</label><input id="t-stock" type="number" min="0" value="${d.stock}"></div>`}</div>
     <details class="ficha"${(us.length||d.marca||d.modelo||d.descripcion||d.ubicacion||S.fichaOpen)?' open':''}><summary>Ficha técnica <span class="muted">marca, modelo, ubicación, series y código de bienes</span></summary>
@@ -3067,7 +3094,8 @@ document.addEventListener('input',e=>{
   if(e.target.id==='ql'){S.lab.q=e.target.value;render();}
 });
 document.addEventListener('change',e=>{if(e.target.id==='fur'){S.fur=e.target.value;render();}});
-document.addEventListener('change',e=>{if(e.target.id==='fis'){S.fi=e.target.value;render();}if(e.target.id==='fic'){S.fic=e.target.value;render();}if(e.target.id==='fiu'){S.fiu=e.target.value;render();}if(e.target.id==='fiv'){S.fiv=e.target.value;render();}if(e.target.id==='bc-sel'){const n=document.getElementById('bc-nw');if(n)n.hidden=e.target.value!=='__nueva';}if(e.target.id==='t-cat'){const n=document.getElementById('t-catnew');if(n){n.hidden=e.target.value!=='__nueva';if(!n.hidden)n.focus();}}if(e.target.id==='fuc'){S.fuc=e.target.value;render();}if(e.target.id==='fua'){S.fua=e.target.value;render();}});
+document.addEventListener('change',e=>{if(e.target.id==='fis'){S.fi=e.target.value;render();}if(e.target.id==='fic'){S.fic=e.target.value;render();}if(e.target.id==='fiu'){S.fiu=e.target.value;render();}if(e.target.id==='fiv'){S.fiv=e.target.value;render();}if(e.target.id==='bc-sel'){const n=document.getElementById('bc-nw');if(n)n.hidden=e.target.value!=='__nueva';}if(e.target.id==='t-cat'){const n=document.getElementById('t-catnew');if(n){n.hidden=e.target.value!=='__nueva';if(!n.hidden)n.focus();}codAutoRefrescar();}if(e.target.id==='fuc'){S.fuc=e.target.value;render();}if(e.target.id==='fua'){S.fua=e.target.value;render();}});
+document.addEventListener('input',e=>{if(!S.draft)return;if(e.target.id==='t-cod'){S.draft.codAuto=false;const h=document.querySelector('.cod-auto');if(h)h.remove();}else if(e.target.id==='t-catnew')codAutoRefrescar();});
 document.addEventListener('input',e=>{const m=/^pc-(btn|sec|side|bg)$/.exec(e.target.id||'');if(!m)return;S.palDraft={...palActual(),k:'custom',[m[1]]:e.target.value};aplicarPaleta();});
 document.addEventListener('change',e=>{if(/^pc-/.test(e.target.id||''))render();});
 document.addEventListener('input',e=>{const m=/^pm-(btn|sec|side|bg)$/.exec(e.target.id||'');if(!m)return;AP.set('palcu',JSON.stringify({...palCuMia(),[m[1]]:e.target.value}));aplicarPaleta();});
@@ -3131,7 +3159,7 @@ function previewTools(t){
   const os=csvObjs(t),ok=[],bad=[];
   const seen=new Set(S.tools.map(x=>String(x.codigo||'').toUpperCase()).filter(Boolean));
   os.forEach((o,i)=>{
-    const ln=i+2,nombre=o.nombre||'',codigo=(o.codigo||'').toUpperCase();
+    const ln=i+2,nombre=o.nombre||'',codigo=(o.codigo||'').toUpperCase()||(nombre?codigoSiguiente(o.categoria||'',seen):'');
     if(!nombre){bad.push('Fila '+ln+': falta el nombre.');return;}
     if(codigo&&seen.has(codigo)){bad.push('Fila '+ln+' ('+nombre+'): el código '+codigo+' ya existe.');return;}
     if(codigo)seen.add(codigo);
