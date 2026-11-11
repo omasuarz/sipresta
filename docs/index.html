@@ -1659,12 +1659,22 @@ function catalogo(){
   return h;
 }
 
+function regDe(l){
+  const us=S.users||[];
+  if(l.estudianteId){const r=us.find(u=>u.id===l.estudianteId||u.uid===l.estudianteId);if(r)return r;}
+  if(l.estudianteRun){const k=normId(l.estudianteRun);const r=us.find(u=>u.run&&normId(u.run)===k);if(r)return r;}
+  const n=norm(l.estudianteTexto||'').trim();return n?us.find(u=>norm(u.nombre).trim()===n)||null:null;
+}
+function quienHTML(l){
+  const r=regDe(l),nom=(r&&r.nombre)||persona(l),run=l.estudianteRun||(r&&r.run)||'';
+  return `<span class="quien"><b>${esc(nom)}</b>${run?` <span class="mono muted">RUN ${esc(run)}</span>`:''}</span>`;
+}
 function loanRow(l,opts){
   const t=T(l.herramientaId),e=estado(l);
   const nombre=t?t.nombre:'(herramienta eliminada)';
   const sel=opts.sel&&(S.devSel||[]).includes(l.id);
   return `<div class="row ${e==='atrasado'?'late':''}${sel?' selrow':''}"><div class="row-lead">${opts.sel?`<input type="checkbox" class="rsel" data-act="dsel" data-id="${l.id}" ${sel?'checked':''} aria-label="Seleccionar ${esc(nombre)}">`:''}${t?`<span class="row-img">${t.fotoId?`<img src="${fotoUrl(t.fotoId)}" alt="" loading="lazy">`:ilustracion(t)}</span>`:''}<div class="row-main"><span class="row-title">${esc(nombre)} ${t?`<span class="mono muted">${esc(t.codigo||'')}</span>`:''}</span>
-    ${opts.persona?`<span>${esc(persona(l))}</span>`:''}<span class="muted">${esc(infoLinea(l))}</span>${(l.unidadBien||l.unidadSerie)?`<span class="muted">Unidad: ${esc(l.unidadBien||'—')}${l.unidadSerie?' · serie '+esc(l.unidadSerie):''}</span>`:''}${l.nota?`<span class="muted">Observación: ${esc(l.nota)}</span>`:''}${l.motivoExcepcion?`<span class="muted">Excepción: ${esc(l.motivoExcepcion)}</span>`:''}</div></div>
+    ${opts.persona?quienHTML(l):''}<span class="muted">${esc(infoLinea(l))}</span>${(l.unidadBien||l.unidadSerie)?`<span class="muted">Unidad: ${esc(l.unidadBien||'—')}${l.unidadSerie?' · serie '+esc(l.unidadSerie):''}</span>`:''}${l.nota?`<span class="muted">Observación: ${esc(l.nota)}</span>`:''}${l.motivoExcepcion?`<span class="muted">Excepción: ${esc(l.motivoExcepcion)}</span>`:''}</div></div>
     <div class="row-acts">${pill(e)}${opts.acts?opts.acts(l,e):''}</div></div>`;
 }
 
@@ -1767,7 +1777,7 @@ function staffHoy(){
   const F=S.fh;
   if(!S.loaded.loans)return `<div class="kpis">${'<div class="kpi"><span class="kpi-t">&nbsp;</span><b>–</b><span class="kpi-c">Cargando…</span></div>'.repeat(4)}</div>`+skelRows('En préstamo',3);
   const kp=(c,t,n,s,k)=>k?`<button type="button" class="kpi ${c}${F===k?' on':''}" data-act="fh" data-id="${k}" aria-pressed="${F===k}"><span class="kpi-t">${t}</span><b>${n}</b><span class="kpi-c">${s}</span></button>`:`<div class="kpi ${c}"><span class="kpi-t">${t}</span><b>${n}</b><span class="kpi-c">${s}</span></div>`;
-  const qe=norm(S.qe||'').trim(),okQ=x=>{if(!qe)return true;const t=T(x.l.herramientaId)||{};return norm([persona(x.l),x.l.run,x.l.usuarioRun,x.l.correo,t.nombre,t.codigo].filter(Boolean).join(' ')).includes(qe);};
+  const qe=norm(S.qe||'').trim(),okQ=x=>{if(!qe)return true;const t=T(x.l.herramientaId)||{};const r=regDe(x.l)||{};return norm([persona(x.l),r.nombre,r.run,r.run?normId(r.run):'',x.l.estudianteRun,t.nombre,t.codigo].filter(Boolean).join(' ')).includes(qe);};
   const enV=(F==='atr'?en.filter(x=>x.e==='atrasado'):en).filter(okQ),porV=por.filter(okQ);
   let h=`<div class="kpis">${kp('k-ok','Por retirar',por.length,'Reservas pendientes','por')}${kp('k-act','En préstamo',en.length,'Herramientas fuera del taller','en')}${kp('k-late','Atrasados',atr,'Requieren seguimiento','atr')}<button type="button" class="kpi k-mnt" data-act="ir-sanc"><span class="kpi-t">Sanciones activas</span><b>${san}</b><span class="kpi-c">Estudiantes bloqueados · ver en Usuarios</span></button></div>`;
   h+=`<form class="scan" data-form="scan"><input id="scan" class="search" placeholder="Escanea cédula, herramienta o comprobante y Enter" autocomplete="off" aria-label="Escanear cédula, herramienta o comprobante"><button class="btn primary" type="submit">Prestar</button><button class="btn" type="button" data-act="dev-qr">Devolución con QR</button><button class="btn" type="button" data-act="mostrador">Modo mostrador</button></form>`;
@@ -2798,7 +2808,7 @@ const actions={
       const t=T(it.id);let hh=t.plazoHoras||24,motivo='';
       if(pv>0){hh=pv*(val('p-un')==='d'?24:1);motivo=mot;}else if(esp){hh=esp;motivo=reg.motivoExc||'';}
       if(sobre)motivo=mot;
-      await col('prestamos').add({herramientaId:t.id,estudianteId:null,estudianteTexto:nombre,estado:'entregado',creado:iso(now),entregadoEn:iso(now),venceEn:iso(ajustarVence(now+hh*3600e3)),plazoHoras:hh,...(it.bien?{unidadBien:it.bien}:{}),...(it.serie?{unidadSerie:it.serie}:{}),...(sobre?{excedeLimite:true}:{}),...(motivo?{motivoExcepcion:motivo}:{}),...(eppDe(t).length?{epp:eppDe(t),eppOk:true}:{})});
+      await col('prestamos').add({herramientaId:t.id,estudianteId:null,estudianteTexto:nombre,...(reg&&reg.run?{estudianteRun:reg.run}:{}),estado:'entregado',creado:iso(now),entregadoEn:iso(now),venceEn:iso(ajustarVence(now+hh*3600e3)),plazoHoras:hh,...(it.bien?{unidadBien:it.bien}:{}),...(it.serie?{unidadSerie:it.serie}:{}),...(sobre?{excedeLimite:true}:{}),...(motivo?{motivoExcepcion:motivo}:{}),...(eppDe(t).length?{epp:eppDe(t),eppOk:true}:{})});
     }
     const n=S.cart.length;S.cart=[];
     sheet('');toast(n===1?'Préstamo registrado.':n+' préstamos registrados.');
