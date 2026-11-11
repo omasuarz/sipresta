@@ -1174,7 +1174,7 @@ async function migrarPlazo24(){
 const DEF={maxPorEstudiante:3,minutosRetiro:15,diasSancion:2,san1:5,san2:20,san3:40,horario:'',correo:'',telefono:'',ubicacion:'',mapa:'',instagram:''};
 const S={go:{},sel:{},fic:'',fiv:'',fiu:'',fuf:'todos',fuc:'',fua:'',db:null,user:null,uid:null,isStaff:false,status:'cargando',view:'student',
   tab:{student:'catalogo',staff:'hoy'},name:'',tools:[],loans:[],sanc:[],users:[],cfg:{...DEF},prof:{},
-  q:'',fh:'',fi:'',qi:'',qu:'',fur:'',draft:null,invModo:'lista',bulk:false,cat:'Todas',loaded:{tools:false,loans:false},hist:40};
+  q:'',fh:'',fi:'',qe:'',qi:'',qu:'',fur:'',draft:null,invModo:'lista',bulk:false,cat:'Todas',loaded:{tools:false,loans:false},hist:40};
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const T=id=>S.tools.find(t=>t.id===id);
@@ -1522,15 +1522,18 @@ function staffHoy(){
   const F=S.fh;
   if(!S.loaded.loans)return `<div class="kpis">${'<div class="kpi"><span class="kpi-t">&nbsp;</span><b>–</b><span class="kpi-c">Cargando…</span></div>'.repeat(4)}</div>`+skelRows('En préstamo',3);
   const kp=(c,t,n,s,k)=>k?`<button type="button" class="kpi ${c}${F===k?' on':''}" data-act="fh" data-id="${k}" aria-pressed="${F===k}"><span class="kpi-t">${t}</span><b>${n}</b><span class="kpi-c">${s}</span></button>`:`<div class="kpi ${c}"><span class="kpi-t">${t}</span><b>${n}</b><span class="kpi-c">${s}</span></div>`;
-  const enV=F==='atr'?en.filter(x=>x.e==='atrasado'):en;
+  const qe=norm(S.qe||'').trim(),okQ=x=>{if(!qe)return true;const t=T(x.l.herramientaId)||{};return norm([persona(x.l),x.l.run,x.l.usuarioRun,x.l.correo,t.nombre,t.codigo].filter(Boolean).join(' ')).includes(qe);};
+  const enV=(F==='atr'?en.filter(x=>x.e==='atrasado'):en).filter(okQ),porV=por.filter(okQ);
   let h=`<div class="kpis">${kp('k-ok','Por retirar',por.length,'Reservas pendientes','por')}${kp('k-act','En préstamo',en.length,'Herramientas fuera del taller','en')}${kp('k-late','Atrasados',atr,'Requieren seguimiento','atr')}<button type="button" class="kpi k-mnt" data-act="ir-sanc"><span class="kpi-t">Sanciones activas</span><b>${san}</b><span class="kpi-c">Estudiantes bloqueados · ver en Usuarios</span></button></div>`;
   h+=`<form class="scan" data-form="scan"><input id="scan" class="search" placeholder="Escanea cédula, herramienta o comprobante y Enter" autocomplete="off" aria-label="Escanear cédula, herramienta o comprobante"><button class="btn primary" type="submit">Prestar</button><button class="btn" type="button" data-act="dev-qr">Devolución con QR</button><button class="btn" type="button" data-act="mostrador">Modo mostrador</button></form>`;
+  h+=`<div class="filters"><input id="qe" class="search" type="search" placeholder="Buscar estudiante por nombre o RUN, o por herramienta" value="${esc(S.qe||'')}" aria-label="Buscar préstamos por estudiante" autocomplete="off"></div>`;
+  if(qe&&!enV.length&&!porV.length)h+=`<div class="note">Ningún préstamo ni reserva coincide con «${esc(S.qe)}».</div>`;
   if(F)h+=`<div class="filt-note">Mostrando: <b>${{por:'Por retirar',en:'En préstamo',atr:'Atrasados'}[F]}</b> <button type="button" class="btn small" data-act="fh" data-id="">Ver todo</button></div>`;
   const vivos=new Set(enV.map(x=>x.l.id));S.devSel=(S.devSel||[]).filter(id=>vivos.has(id));
   const nSel=S.devSel.length,todos=enV.length&&nSel===enV.length;
   const bulk=enV.length>1||nSel?`<div class="bulk${nSel?' on':''}" style="margin:0;border-radius:0;border-width:0 0 1px"><label class="chk"><input type="checkbox" data-act="dsel-todos" ${todos?'checked':''}> Seleccionar todas</label><span class="muted bulk-h">${nSel?nSel+' seleccionada'+(nSel===1?'':'s'):'Marca varias para devolverlas juntas'}</span>${nSel?`<span class="bulk-a"><button class="btn small" type="button" data-act="dsel-nada">Quitar selección</button><button class="btn primary small" type="button" data-act="devolver-varias">Registrar devolución (${nSel})</button></span>`:''}</div>`:'';
   if(F!=='por')h+=`<section class="panel-list"><h3>${F==='atr'?'Atrasados':'En préstamo'} <span class="mono muted">${enV.length}</span></h3>${bulk}${enV.length?enV.map(x=>loanRow(x.l,{persona:1,sel:1,acts:(l,e)=>`${e==='atrasado'?`<button class="btn small" data-act="aviso" data-id="${l.id}">Avisar</button>`:''}<button class="btn small" data-act="comprobante" data-id="${l.id}">Comprobante</button><button class="btn primary small" data-act="devolver" data-id="${l.id}">Registrar devolución</button>`})).join(''):`<div class="empty-a"><p class="empty">${F==='atr'?'No hay préstamos atrasados.':'No hay herramientas fuera del taller.'}</p>${F==='atr'?'':'<button class="btn" type="button" data-act="scan-foco">Nuevo préstamo</button>'}</div>`}</section>`;
-  if(F!=='en'&&F!=='atr')h+=`<section class="panel-list"><h3>Reservas por retirar <span class="mono muted">${por.length}</span></h3>${por.length?por.map(x=>loanRow(x.l,{persona:1,acts:l=>`<button class="btn small" data-act="aviso" data-id="${l.id}">Avisar</button><button class="btn primary small" data-act="entregar" data-id="${l.id}">Entregar</button><button class="btn small" data-act="cancelar" data-id="${l.id}">Cancelar</button>`})).join(''):'<p class="empty">No hay reservas pendientes.</p>'}</section>`;
+  if(F!=='en'&&F!=='atr')h+=`<section class="panel-list"><h3>Reservas por retirar <span class="mono muted">${porV.length}</span></h3>${porV.length?porV.map(x=>loanRow(x.l,{persona:1,acts:l=>`<button class="btn small" data-act="aviso" data-id="${l.id}">Avisar</button><button class="btn primary small" data-act="entregar" data-id="${l.id}">Entregar</button><button class="btn small" data-act="cancelar" data-id="${l.id}">Cancelar</button>`})).join(''):'<p class="empty">No hay reservas pendientes.</p>'}</section>`;
   return h;
 }
 const invOk=t=>{const FI=S.fi;if(!FI)return true;if(FI==='sinfoto')return !t.fotoId&&t.activa!==false;if(FI==='oculta')return t.activa===false;if(FI==='disp')return disp(t)>0;if(FI==='mnt')return (t.fuera||0)>0||estT(t)==='mant';if(FI==='buena')return estT(t)==='buena';if(FI==='baja')return estT(t)==='baja';return Math.max(0,(t.stock||0)-Math.min(t.fuera||0,t.stock||0)-disp(t))>0;};
@@ -2855,6 +2858,7 @@ document.addEventListener('click',async e=>{
 document.addEventListener('input',e=>{
   if(e.target.id==='q'){S.q=e.target.value;render();}
   if(e.target.id==='qi'){S.qi=e.target.value;render();}
+  if(e.target.id==='qe'){S.qe=e.target.value;render();}
   if(e.target.id==='qu'){S.qu=e.target.value;render();}
   if(e.target.id==='p-est')infoPrestamo();
   if(e.target.id==='ql'){S.lab.q=e.target.value;render();}
