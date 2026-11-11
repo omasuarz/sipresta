@@ -1419,7 +1419,7 @@ async function migrarPlazo24(){
 const DEF={maxPorEstudiante:3,minutosRetiro:15,diasSancion:2,san1:5,san2:20,san3:40,horario:'',correo:'',telefono:'',ubicacion:'',mapa:'',instagram:''};
 const S={go:{},sel:{},fic:'',fiv:'',fiu:'',fuf:'todos',fuc:'',fua:'',db:null,user:null,uid:null,isStaff:false,status:'cargando',view:'student',
   tab:{student:'catalogo',staff:'hoy'},name:'',tools:[],loans:[],sanc:[],users:[],cfg:{...DEF},prof:{},
-  q:'',fh:'',fi:'',qe:'',qi:'',qu:'',fur:'',draft:null,invModo:'lista',bulk:false,cat:'Todas',loaded:{tools:false,loans:false},hist:40};
+  q:'',fh:'',fi:'',qe:'',qh:'',qi:'',qu:'',fur:'',draft:null,invModo:'lista',bulk:false,cat:'Todas',loaded:{tools:false,loans:false},hist:40};
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const T=id=>S.tools.find(t=>t.id===id);
@@ -1777,7 +1777,7 @@ function staffHoy(){
   const F=S.fh;
   if(!S.loaded.loans)return `<div class="kpis">${'<div class="kpi"><span class="kpi-t">&nbsp;</span><b>–</b><span class="kpi-c">Cargando…</span></div>'.repeat(4)}</div>`+skelRows('En préstamo',3);
   const kp=(c,t,n,s,k)=>k?`<button type="button" class="kpi ${c}${F===k?' on':''}" data-act="fh" data-id="${k}" aria-pressed="${F===k}"><span class="kpi-t">${t}</span><b>${n}</b><span class="kpi-c">${s}</span></button>`:`<div class="kpi ${c}"><span class="kpi-t">${t}</span><b>${n}</b><span class="kpi-c">${s}</span></div>`;
-  const qe=norm(S.qe||'').trim(),okQ=x=>{if(!qe)return true;const t=T(x.l.herramientaId)||{};const r=regDe(x.l)||{};return norm([persona(x.l),r.nombre,r.run,r.run?normId(r.run):'',x.l.estudianteRun,t.nombre,t.codigo].filter(Boolean).join(' ')).includes(qe);};
+  const qe=norm(S.qe||'').trim(),okQ=x=>coincideLoan(x.l,qe);
   const enV=(F==='atr'?en.filter(x=>x.e==='atrasado'):en).filter(okQ),porV=por.filter(okQ);
   let h=`<div class="kpis">${kp('k-ok','Por retirar',por.length,'Reservas pendientes','por')}${kp('k-act','En préstamo',en.length,'Herramientas fuera del taller','en')}${kp('k-late','Atrasados',atr,'Requieren seguimiento','atr')}<button type="button" class="kpi k-mnt" data-act="ir-sanc"><span class="kpi-t">Sanciones activas</span><b>${san}</b><span class="kpi-c">Estudiantes bloqueados · ver en Usuarios</span></button></div>`;
   h+=`<form class="scan" data-form="scan"><input id="scan" class="search" placeholder="Escanea cédula, herramienta o comprobante y Enter" autocomplete="off" aria-label="Escanear cédula, herramienta o comprobante"><button class="btn primary" type="submit">Prestar</button><button class="btn" type="button" data-act="dev-qr">Devolución con QR</button><button class="btn" type="button" data-act="mostrador">Modo mostrador</button></form>`;
@@ -2188,8 +2188,19 @@ function staffSanciones(soloAct){
     (!soloAct&&pas.length?`<section class="panel-list"><h3>Sanciones anteriores</h3>${pas.map(s=>row(s,0)).join('')}</section>`:'')+
     `${soloAct?'':`<p class="muted">Las sanciones por atraso se crean al registrar la devolución. ${esAdmin()?'Aquí puedes levantarlas antes de que venzan.':'Solo el administrador puede levantarlas antes de que venzan.'}</p>`}`;
 }
-function staffRegistro(){return staffReportes()+staffHistorial()+(S.histOp&&S.loans.filter(x=>!vivo(x)).length>S.hist?`<div class="actions" style="justify-content:center"><button class="btn" data-act="hist-mas">Ver más</button></div>`:'');}
+function staffRegistro(){return staffReportes()+staffHistorial()+(!(S.qh||'').trim()&&S.histOp&&S.loans.filter(x=>!vivo(x)).length>S.hist?`<div class="actions" style="justify-content:center"><button class="btn" data-act="hist-mas">Ver más</button></div>`:'');}
+function coincideLoan(l,q){
+  if(!q)return true;const t=T(l.herramientaId)||{},r=regDe(l)||{},run=l.estudianteRun||r.run||'';
+  const txt=norm([persona(l),l.estudianteTexto,r.nombre,run,run?normId(run):'',t.nombre,t.codigo,l.unidadBien,l.unidadSerie].filter(Boolean).join(' '));
+  return q.split(/\s+/).every(w=>txt.includes(w)||txt.includes(normId(w)));
+}
 function staffHistorial(){
+  const qh=norm(S.qh||'').trim(),buscador=`<div class="filters hist-q"><input id="qh" class="search" type="search" placeholder="Buscar en préstamos cerrados: estudiante, RUN o herramienta" value="${esc(S.qh||'')}" aria-label="Buscar en préstamos cerrados" autocomplete="off"></div>`;
+  if(qh){const m=S.loans.filter(x=>!vivo(x)&&coincideLoan(x,qh)).sort((a,b)=>ts(b.devueltoEn||b.creado)-ts(a.devueltoEn||a.creado));
+    return buscador+`<section class="panel-list"><h3>Préstamos cerrados que coinciden <span class="mono muted">${m.length}</span></h3>${m.length?m.slice(0,200).map(x=>loanRow(x,{persona:1,acts:l=>`<button class="btn small" data-act="comprobante" data-id="${l.id}">Comprobante</button>`})).join(''):`<p class="empty">Ningún préstamo cerrado coincide con «${esc(S.qh)}».</p>`}</section>`;}
+  return buscador+staffHistorial0();
+}
+function staffHistorial0(){
   const l=S.loans.filter(x=>!vivo(x)).sort((a,b)=>ts(b.devueltoEn||b.creado)-ts(a.devueltoEn||a.creado)).slice(0,S.hist);
   const nT=S.loans.filter(x=>!vivo(x)).length;
   if(!S.histOp)return `<button type="button" class="fam-h hist-t" data-act="hist-op" aria-expanded="false"><span class="fam-n">Préstamos cerrados</span><span class="muted">${nT}</span><span class="fam-c" aria-hidden="true">+</span></button>`;
@@ -3114,6 +3125,7 @@ document.addEventListener('input',e=>{
   if(e.target.id==='q'){S.q=e.target.value;render();}
   if(e.target.id==='qi'){S.qi=e.target.value;render();}
   if(e.target.id==='qe'){S.qe=e.target.value;render();}
+  if(e.target.id==='qh'){S.qh=e.target.value;render();}
   if(e.target.id==='qu'){S.qu=e.target.value;render();}
   if(e.target.id==='p-est')infoPrestamo();
   if(e.target.id==='ql'){S.lab.q=e.target.value;render();}
