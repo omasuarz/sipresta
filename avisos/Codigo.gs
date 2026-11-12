@@ -5,6 +5,7 @@
  * Revisa los préstamos cada 10 minutos y envía:
  *   1) un recordatorio 1 hora antes del vencimiento;
  *   2) (opcional) un aviso cuando el préstamo ya está atrasado.
+ * Por correo y, si el estudiante los activó, como notificación en su teléfono.
  * Cada préstamo queda marcado (aviso1h / avisoAtraso) para no repetir el correo.
  *
  * Instalación: ver LEEME en esta misma carpeta. Primero ejecuta «probar», luego «instalar».
@@ -41,7 +42,8 @@ function revisarVencimientos() {
     if (!tipo) return;
 
     const est = buscarEstudiante_(p, usuarios);
-    if (!est || !est.correo) { marcar_(p._id, tipo, 'sin-correo'); return; }
+    const uid = (est && est.uid) || p.estudianteId || (est && est._id) || '';
+    if ((!est || !est.correo) && !tieneTelefono_(uid)) { marcar_(p._id, tipo, 'sin-correo'); return; }
 
     const t = cache[p.herramientaId] || (cache[p.herramientaId] = leer_('herramientas/' + p.herramientaId) || {});
     const herr = (t.nombre || 'la herramienta') + (t.codigo ? ' (' + t.codigo + ')' : '');
@@ -63,10 +65,16 @@ function revisarVencimientos() {
     cuerpo += '\n\nRevisa tus préstamos en ' + URL_APP + (contacto ? '\n\n' + contacto : '')
       + '\n\nTaller de Herramientas y Materiales\nEscuela de Arquitectura · Universidad de Talca\n\n(Este es un mensaje automático de SIPRESTA.)';
 
-    const op = { name: NOMBRE_REMITENTE };
-    if (cfg.correo) op.replyTo = cfg.correo;
-    if (COPIA_A) op.bcc = COPIA_A;
-    MailApp.sendEmail(est.correo, asunto, cuerpo, op);
+    if (est && est.correo) {
+      const op = { name: NOMBRE_REMITENTE };
+      if (cfg.correo) op.replyTo = cfg.correo;
+      if (COPIA_A) op.bcc = COPIA_A;
+      MailApp.sendEmail(est.correo, asunto, cuerpo, op);
+    }
+    const hhmm = Utilities.formatDate(new Date(vence), ZONA, 'HH:mm');
+    notificar_(uid, tipo === 'aviso1h' ? 'Devuelve ' + (t.nombre || 'tu herramienta') + ' antes de las ' + hhmm : 'Préstamo atrasado',
+      tipo === 'aviso1h' ? 'Tu préstamo vence en menos de una hora. Devuélvela en el Taller de Herramientas y Materiales.'
+        : 'El préstamo de ' + herr + ' venció a las ' + hhmm + '. Devuélvelo lo antes posible.');
     marcar_(p._id, tipo, new Date().toISOString());
     enviados++;
   });
@@ -80,7 +88,9 @@ function probar() {
   console.log('Conexión OK. Préstamos activos: ' + p.length + ' · Usuarios: ' + u.length + ' · Correos disponibles hoy: ' + MailApp.getRemainingDailyQuota());
   p.forEach(function (x) {
     const e = buscarEstudiante_(x, u);
-    console.log('- vence ' + x.venceEn + ' · ' + (e ? (e.nombre || '') + ' <' + (e.correo || 'sin correo') + '>' : (x.estudianteTexto || 'estudiante no encontrado')) + (x.aviso1h ? ' · ya avisado' : ''));
+    const uid = (e && e.uid) || x.estudianteId || (e && e._id) || '';
+    console.log('- vence ' + x.venceEn + ' · ' + (e ? (e.nombre || '') + ' <' + (e.correo || 'sin correo') + '>' : (x.estudianteTexto || 'estudiante no encontrado'))
+      + (tieneTelefono_(uid) ? ' · avisos en teléfono: sí' : '') + (x.aviso1h ? ' · ya avisado' : ''));
   });
 }
 
@@ -95,6 +105,37 @@ function instalar() {
 function desinstalar() {
   ScriptApp.getProjectTriggers().forEach(function (t) { ScriptApp.deleteTrigger(t); });
   console.log('Avisos automáticos detenidos.');
+}
+
+// ---------- Notificaciones en el teléfono (Firebase Cloud Messaging) ----------
+function tokens_(uid) { if (!uid) return []; const d = leer_('push/' + uid); return (d && d.tokens) || []; }
+function tieneTelefono_(uid) { return tokens_(uid).length > 0; }
+function notificar_(uid, titulo, cuerpo) {
+  const toks = tokens_(uid); if (!toks.length) return;
+  const vivos = [];
+  toks.forEach(function (tok) {
+    const r = UrlFetchApp.fetch('https://fcm.googleapis.com/v1/projects/' + PROYECTO + '/messages:send', {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+      payload: JSON.stringify({ message: { token: tok, notification: { title: titulo, body: cuerpo },
+        webpush: { notification: { icon: URL_APP + 'icono-192.png' }, fcm_options: { link: URL_APP } } } })
+    });
+    const c = r.getResponseCode();
+    if (c === 404 || (c === 400 && /UNREGISTERED|INVALID_ARGUMENT/.test(r.getContentText()))) return; // teléfono que ya no existe
+    if (c >= 300) console.log('FCM ' + c + ': ' + r.getContentText().slice(0, 200));
+    vivos.push(tok);
+  });
+  if (vivos.length !== toks.length) pedir_(BASE_ + '/push/' + uid + '?updateMask.fieldPaths=tokens', 'patch',
+    { fields: { tokens: { arrayValue: { values: vivos.map(function (x) { return { stringValue: x }; }) } } } });
+}
+
+/** Envía una notificación de prueba a tus propios teléfonos (los del correo indicado). */
+function probarNotificacion() {
+  const correo = 'ESCRIBE_AQUI_TU_CORREO_DE_SIPRESTA';
+  const docs = listar_('push').filter(function (d) { return (d.correo || '').toLowerCase() === correo.toLowerCase(); });
+  if (!docs.length) { console.log('Ese correo aún no activó avisos en ningún teléfono.'); return; }
+  docs.forEach(function (d) { notificar_(d._id, 'Prueba de SIPRESTA', 'Si ves esto, los avisos en el teléfono funcionan.'); });
+  console.log('Notificación de prueba enviada a ' + docs.length + ' cuenta(s).');
 }
 
 // ---------- Fecha en español ----------

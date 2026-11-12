@@ -40,6 +40,10 @@ service cloud.firestore {
     }
 
     // Nombre visible de cada persona (lo escribe cada uno al entrar)
+    // Dispositivos para notificaciones: cada persona solo ve y escribe los suyos
+    match /push/{uid} {
+      allow read, write: if dentro() && request.auth.uid == uid;
+    }
     match /perfiles/{uid} {
       allow read: if dentro();
       allow write: if dentro() && request.auth.uid == uid;

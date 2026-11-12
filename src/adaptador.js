@@ -137,6 +137,59 @@ sesion.then(function(u){
   fichaUsuario(u);
 });
 
+/* ---------- Notificaciones en el teléfono (Firebase Cloud Messaging) ----------
+   El estudiante acepta una vez; su dispositivo queda en push/{uid} y el script de avisos
+   (carpeta avisos/) le envía el recordatorio 1 hora antes del vencimiento. */
+var VAPID='BNFA1qQvK-opIxN4g91jMHwuHbmz8Uq64GbvMkRkL_E0lTXfLsP1USYqlVX_MHbP2Udj9EkApOvnLi5QrnIoX9o';
+var esIOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+var instalada=(window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true;
+function pushOk(){try{return 'Notification' in window&&'serviceWorker' in navigator&&firebase.messaging&&firebase.messaging.isSupported();}catch(e){return false;}}
+function pospuesto(k){try{var t=+localStorage.getItem('sipresta-push-'+k)||0;return Date.now()-t<14*864e5;}catch(e){return false;}}
+function posponer(k){try{localStorage.setItem('sipresta-push-'+k,String(Date.now()));}catch(e){}}
+var swReg=null;
+function registrarPush(u){
+  return navigator.serviceWorker.register('firebase-messaging-sw.js').then(function(reg){swReg=reg;
+    return firebase.messaging().getToken({vapidKey:VAPID,serviceWorkerRegistration:reg});
+  }).then(function(tok){
+    if(!tok)return false;
+    return db.doc('push/'+u.uid).set({tokens:firebase.firestore.FieldValue.arrayUnion(tok),correo:correo(u),actualizado:new Date().toISOString()},{merge:true}).then(function(){return true;});
+  });
+}
+function avisoPush(html,acciones){
+  var d=document.createElement('div');d.className='push-aviso';d.setAttribute('role','dialog');d.setAttribute('aria-label','Avisos en este teléfono');
+  d.innerHTML=html+'<div class="push-acc">'+acciones+'</div>';document.body.appendChild(d);return d;
+}
+function iniciarPush(u){
+  if(!u)return;
+  if(pushOk()){
+    try{firebase.messaging().onMessage(function(p){var n=p.notification||{};if(swReg&&Notification.permission==='granted')swReg.showNotification(n.title||'SIPRESTA',{body:n.body||'',icon:'icono-192.png'});});}catch(e){}
+    if(Notification.permission==='granted'){registrarPush(u).catch(function(){});return;}
+    if(Notification.permission==='denied'||pospuesto('no'))return;
+    setTimeout(function(){
+      var d=avisoPush('<b>¿Recibir avisos de tus préstamos?</b><span>Te avisaremos en este teléfono 1 hora antes de que venza un préstamo.</span>',
+        '<button class="btn small" type="button" data-p="no">Ahora no</button><button class="btn small primary" type="button" data-p="si">Activar</button>');
+      d.addEventListener('click',function(e){var b=e.target.closest('[data-p]');if(!b)return;
+        if(b.dataset.p==='no'){posponer('no');d.remove();return;}
+        b.disabled=true;b.textContent='Activando…';
+        Notification.requestPermission().then(function(r){
+          if(r!=='granted'){posponer('no');d.remove();return;}
+          return registrarPush(u).then(function(ok){d.innerHTML='<b>'+(ok?'Avisos activados':'No se pudo activar')+'</b><span>'+(ok?'Recibirás los recordatorios de tus préstamos en este teléfono.':'Intenta de nuevo más tarde.')+'</span>';setTimeout(function(){d.remove();},3500);});
+        }).catch(function(){d.remove();});
+      });
+    },2500);
+  }else if(esIOS&&!instalada&&!pospuesto('ios')){
+    setTimeout(function(){
+      var d=avisoPush('<b>Recibe avisos en tu iPhone</b><span>Toca <b>Compartir</b> y luego <b>«Agregar a inicio»</b>. Abre SIPRESTA desde ese ícono para activar los avisos de tus préstamos.</span>',
+        '<button class="btn small" type="button" data-p="ok">Entendido</button>');
+      d.addEventListener('click',function(e){if(e.target.closest('[data-p]')){posponer('ios');d.remove();}});
+    },2500);
+  }
+}
+var cssPush=document.createElement('style');
+cssPush.textContent='.push-aviso{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom));z-index:9000;width:min(440px,calc(100vw - 24px));background:var(--surface,#fff);color:var(--ink,#231f20);border:1px solid var(--line,#ddd);border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.18);padding:16px 18px;display:flex;flex-direction:column;gap:6px;font-size:15px;line-height:1.4}.push-aviso span{color:var(--muted,#666)}.push-acc{display:flex;gap:8px;justify-content:flex-end;margin-top:6px}@media(max-width:860px){.push-aviso{bottom:calc(84px + env(safe-area-inset-bottom))}}';
+document.head.appendChild(cssPush);
+sesion.then(iniciarPush);
+
 /* Cada persona que entra queda en la lista de Usuarios del taller.
    Si el taller ya la tenía cargada (por ejemplo desde el CSV de matrícula), se enlaza por correo;
    si no, se crea su ficha con nombre y correo, para que el encargado complete RUN, matrícula y carrera. */

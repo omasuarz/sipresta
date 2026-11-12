@@ -36,7 +36,7 @@ s = s[:j] + '@media(max-width:860px){.side-btn.salir{display:none}}\n.who .av{cu
 # Firebase + adaptador antes del código de la app
 cfg = open(os.path.join(here, 'firebase-config.js'), encoding='utf8').read()
 ad = open(os.path.join(here, 'src', 'adaptador.js'), encoding='utf8').read()
-inj = (''.join(f'<script src="https://www.gstatic.com/firebasejs/{FB}/firebase-{m}-compat.js"></script>\n' for m in ('app', 'auth', 'firestore'))
+inj = (''.join(f'<script src="https://www.gstatic.com/firebasejs/{FB}/firebase-{m}-compat.js"></script>\n' for m in ('app', 'auth', 'firestore', 'messaging'))
        + '<script>\n' + cfg + '\n</script>\n<script>\n' + ad + '\n</script>\n')
 i = s.index("<script>\n(function(){\n'use strict';")
 s = s[:i] + inj + s[i:]
@@ -44,3 +44,11 @@ s = s[:i] + inj + s[i:]
 os.makedirs(os.path.join(here, 'docs'), exist_ok=True)
 open(os.path.join(here, 'docs', 'index.html'), 'w', encoding='utf8').write(s)
 print('docs/index.html', len(s))
+
+# Service worker de notificaciones (debe estar en la raíz del sitio publicado)
+sw = (f"importScripts('https://www.gstatic.com/firebasejs/{FB}/firebase-app-compat.js');\n"
+      f"importScripts('https://www.gstatic.com/firebasejs/{FB}/firebase-messaging-compat.js');\n"
+      + cfg.replace('window.SIPRESTA_FIREBASE', 'self.SIPRESTA_FIREBASE') +
+      "\nfirebase.initializeApp(self.SIPRESTA_FIREBASE);\nfirebase.messaging();\n"
+      "self.addEventListener('notificationclick',function(e){e.notification.close();e.waitUntil(clients.matchAll({type:'window',includeUncontrolled:true}).then(function(l){for(var i=0;i<l.length;i++){if('focus' in l[i])return l[i].focus();}return clients.openWindow('./');}));});\n")
+open(os.path.join(here, 'docs', 'firebase-messaging-sw.js'), 'w', encoding='utf8').write(sw)
