@@ -166,7 +166,7 @@ function iniciarPush(u){
     if(Notification.permission==='granted'){registrarPush(u).catch(function(){});return;}
     if(Notification.permission==='denied'||pospuesto('no'))return;
     setTimeout(function(){
-      var d=avisoPush('<b>¿Recibir avisos de tus préstamos?</b><span>Te avisaremos en este teléfono 1 hora antes de que venza un préstamo.</span>',
+      var d=avisoPush('<b>¿Recibir avisos de tus préstamos?</b><span>Te avisaremos en este teléfono 1 hora, 30 y 15 minutos antes de que venza un préstamo.</span>',
         '<button class="btn small" type="button" data-p="no">Ahora no</button><button class="btn small primary" type="button" data-p="si">Activar</button>');
       d.addEventListener('click',function(e){var b=e.target.closest('[data-p]');if(!b)return;
         if(b.dataset.p==='no'){posponer('no');d.remove();return;}
