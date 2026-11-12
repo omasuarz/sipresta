@@ -2,18 +2,21 @@
  * SIPRESTA — Avisos automáticos por correo
  * Taller de Herramientas y Materiales · Escuela de Arquitectura · Universidad de Talca
  *
- * Revisa los préstamos cada 10 minutos y envía:
- *   1) un recordatorio 1 hora antes del vencimiento;
+ * Revisa los préstamos cada 5 minutos y envía:
+ *   1) recordatorios 1 hora, 30 minutos y 15 minutos antes del vencimiento;
  *   2) (opcional) un aviso cuando el préstamo ya está atrasado.
  * Por correo y, si el estudiante los activó, como notificación en su teléfono.
- * Cada préstamo queda marcado (aviso1h / avisoAtraso) para no repetir el correo.
+ * Cada préstamo queda marcado (aviso60 / aviso30 / aviso15 / avisoAtraso) para no repetir avisos.
  *
  * Instalación: ver LEEME en esta misma carpeta. Primero ejecuta «probar», luego «instalar».
  */
 
 // ---------- Ajustes ----------
 const PROYECTO = 'sipresta-talca';          // ID del proyecto Firebase
-const MINUTOS_ANTES = 60;                   // cuánto antes del vencimiento se avisa
+// Minutos antes del vencimiento en que se avisa, por correo y en el teléfono.
+// (Un Gmail normal envía ~100 correos al día: si el taller presta mucho, deja el correo solo en [60, 15].)
+const AVISOS_CORREO = [60, 30, 15];
+const AVISOS_TELEFONO = [60, 30, 15];
 const AVISAR_ATRASO = true;                 // también avisar cuando ya está atrasado
 const NOMBRE_REMITENTE = 'SIPRESTA · Taller de Herramientas y Materiales';
 const URL_APP = 'https://omasuarz.github.io/sipresta/';
@@ -36,26 +39,36 @@ function revisarVencimientos() {
     const vence = Date.parse(p.venceEn || '');
     if (!vence) return;
     const falta = vence - ahora;
-    let tipo = null;
-    if (!p.aviso1h && falta > 0 && falta <= MINUTOS_ANTES * 60000) tipo = 'aviso1h';
-    else if (AVISAR_ATRASO && !p.avisoAtraso && falta <= 0 && -falta < 3 * 24 * 3600000) tipo = 'avisoAtraso';
+    let tipo = null, min = 0, marcas = [];
+    if (falta > 0) {
+      const cortes = UMBRALES_.filter(function (m) { return falta <= m * 60000; });   // ej.: faltan 25 min → [60, 30]
+      if (!cortes.length) return;
+      min = cortes[cortes.length - 1];                                                 // el aviso más cercano que corresponde
+      if (yaAvisado_(p, min)) return;
+      tipo = 'aviso' + min;
+      marcas = cortes.filter(function (m) { return !yaAvisado_(p, m); }).map(function (m) { return 'aviso' + m; });
+    } else if (AVISAR_ATRASO && !p.avisoAtraso && -falta < 3 * 24 * 3600000) { tipo = 'avisoAtraso'; marcas = [tipo]; }
     if (!tipo) return;
+    const porCorreo = tipo === 'avisoAtraso' || AVISOS_CORREO.indexOf(min) >= 0;
+    const porTelefono = tipo === 'avisoAtraso' || AVISOS_TELEFONO.indexOf(min) >= 0;
 
     const est = buscarEstudiante_(p, usuarios);
     const uid = (est && est.uid) || p.estudianteId || (est && est._id) || '';
-    if ((!est || !est.correo) && !tieneTelefono_(uid)) { marcar_(p._id, tipo, 'sin-correo'); return; }
+    if ((!est || !est.correo) && !tieneTelefono_(uid)) { marcar_(p._id, marcas, 'sin-correo'); return; }
 
     const t = cache[p.herramientaId] || (cache[p.herramientaId] = leer_('herramientas/' + p.herramientaId) || {});
     const herr = (t.nombre || 'la herramienta') + (t.codigo ? ' (' + t.codigo + ')' : '');
     const hora = fechaES_(new Date(vence));
-    const nombre = (est.nombres || est.nombre || '').split(' ')[0] || 'Hola';
+    const nombre = ((est && (est.nombres || est.nombre)) || '').split(' ')[0] || 'Hola';
+    const faltaTxt = min >= 60 ? '1 hora' : Math.max(1, Math.round(falta / 60000)) + ' minutos';
+    const queda = (min >= 60 ? 'Queda ' : 'Quedan ') + faltaTxt;
     const contacto = [cfg.horario ? 'Horario: ' + cfg.horario : '', cfg.ubicacion ? 'Ubicación: ' + cfg.ubicacion : '',
       cfg.telefono ? 'Teléfono: ' + cfg.telefono : '', cfg.correo ? 'Correo: ' + cfg.correo : ''].filter(String).join('\n');
 
     let asunto, cuerpo;
-    if (tipo === 'aviso1h') {
-      asunto = 'Recordatorio: devuelve ' + (t.nombre || 'tu herramienta') + ' antes de las ' + Utilities.formatDate(new Date(vence), ZONA, 'HH:mm');
-      cuerpo = nombre + ',\n\nTe recordamos que el préstamo de ' + herr + ' vence el ' + hora + ' (en menos de una hora).\n\n'
+    if (tipo !== 'avisoAtraso') {
+      asunto = (min <= 15 ? queda + ': ' : 'Recordatorio: ') + 'devuelve ' + (t.nombre || 'tu herramienta') + ' antes de las ' + Utilities.formatDate(new Date(vence), ZONA, 'HH:mm');
+      cuerpo = nombre + ',\n\nTe recordamos que el préstamo de ' + herr + ' vence el ' + hora + ' (en ' + faltaTxt + ').\n\n'
         + 'Devuélvela a tiempo en el Taller de Herramientas y Materiales para evitar una sanción.';
     } else {
       asunto = 'Préstamo atrasado: ' + (t.nombre || 'herramienta');
@@ -65,17 +78,17 @@ function revisarVencimientos() {
     cuerpo += '\n\nRevisa tus préstamos en ' + URL_APP + (contacto ? '\n\n' + contacto : '')
       + '\n\nTaller de Herramientas y Materiales\nEscuela de Arquitectura · Universidad de Talca\n\n(Este es un mensaje automático de SIPRESTA.)';
 
-    if (est && est.correo) {
+    if (porCorreo && est && est.correo) {
       const op = { name: NOMBRE_REMITENTE };
       if (cfg.correo) op.replyTo = cfg.correo;
       if (COPIA_A) op.bcc = COPIA_A;
       MailApp.sendEmail(est.correo, asunto, cuerpo, op);
     }
     const hhmm = Utilities.formatDate(new Date(vence), ZONA, 'HH:mm');
-    notificar_(uid, tipo === 'aviso1h' ? 'Devuelve ' + (t.nombre || 'tu herramienta') + ' antes de las ' + hhmm : 'Préstamo atrasado',
-      tipo === 'aviso1h' ? 'Tu préstamo vence en menos de una hora. Devuélvela en el Taller de Herramientas y Materiales.'
+    if (porTelefono) notificar_(uid, tipo !== 'avisoAtraso' ? queda + ' · devuelve ' + (t.nombre || 'tu herramienta') : 'Préstamo atrasado',
+      tipo !== 'avisoAtraso' ? 'Tu préstamo de ' + herr + ' vence a las ' + hhmm + '. Devuélvelo en el Taller de Herramientas y Materiales.'
         : 'El préstamo de ' + herr + ' venció a las ' + hhmm + '. Devuélvelo lo antes posible.');
-    marcar_(p._id, tipo, new Date().toISOString());
+    marcar_(p._id, marcas, new Date().toISOString());
     enviados++;
   });
   if (enviados) console.log('Avisos enviados: ' + enviados);
@@ -90,15 +103,15 @@ function probar() {
     const e = buscarEstudiante_(x, u);
     const uid = (e && e.uid) || x.estudianteId || (e && e._id) || '';
     console.log('- vence ' + x.venceEn + ' · ' + (e ? (e.nombre || '') + ' <' + (e.correo || 'sin correo') + '>' : (x.estudianteTexto || 'estudiante no encontrado'))
-      + (tieneTelefono_(uid) ? ' · avisos en teléfono: sí' : '') + (x.aviso1h ? ' · ya avisado' : ''));
+      + (tieneTelefono_(uid) ? ' · avisos en teléfono: sí' : '') + (UMBRALES_.filter(function (m) { return yaAvisado_(x, m); }).length ? ' · avisado: ' + UMBRALES_.filter(function (m) { return yaAvisado_(x, m); }).join(', ') + ' min' : ''));
   });
 }
 
-/** Ejecuta una vez para activar la revisión automática cada 10 minutos. */
+/** Ejecuta una vez para activar la revisión automática cada 5 minutos. */
 function instalar() {
   ScriptApp.getProjectTriggers().forEach(function (t) { ScriptApp.deleteTrigger(t); });
-  ScriptApp.newTrigger('revisarVencimientos').timeBased().everyMinutes(10).create();
-  console.log('Listo: SIPRESTA revisará los vencimientos cada 10 minutos.');
+  ScriptApp.newTrigger('revisarVencimientos').timeBased().everyMinutes(5).create();
+  console.log('Listo: SIPRESTA revisará los vencimientos cada 5 minutos.');
 }
 
 /** Para detener los avisos. */
@@ -146,6 +159,10 @@ function fechaES_(d) {
   return DIAS[Number(f('u')) % 7] + ' ' + Number(f('d')) + ' de ' + MESES[Number(f('M')) - 1] + ' a las ' + f('HH:mm');
 }
 
+// ---------- Umbrales ----------
+const UMBRALES_ = AVISOS_CORREO.concat(AVISOS_TELEFONO).filter(function (m, i, a) { return a.indexOf(m) === i; }).sort(function (a, b) { return b - a; });
+function yaAvisado_(p, m) { return !!(p['aviso' + m] || (m === 60 && p.aviso1h)); }
+
 // ---------- Estudiante ----------
 function buscarEstudiante_(p, usuarios) {
   const limpiaRun = function (r) { return String(r || '').replace(/[^0-9kK]/g, '').toUpperCase(); };
@@ -183,8 +200,10 @@ function consultar_(col, campo, valor) {
     where: { fieldFilter: { field: { fieldPath: campo }, op: 'EQUAL', value: { stringValue: valor } } } } });
   return (r || []).filter(function (x) { return x.document; }).map(function (x) { return doc_(x.document); });
 }
-function marcar_(id, campo, valor) {
-  pedir_(BASE_ + '/prestamos/' + id + '?updateMask.fieldPaths=' + campo, 'patch', { fields: { [campo]: { stringValue: valor } } });
+function marcar_(id, campos, valor) {
+  campos = [].concat(campos); if (!campos.length) return;
+  const f = {}; campos.forEach(function (c) { f[c] = { stringValue: valor }; });
+  pedir_(BASE_ + '/prestamos/' + id + '?' + campos.map(function (c) { return 'updateMask.fieldPaths=' + c; }).join('&'), 'patch', { fields: f });
 }
 function doc_(d) { const o = val_({ mapValue: { fields: d.fields || {} } }); o._id = d.name.split('/').pop(); return o; }
 function val_(v) {

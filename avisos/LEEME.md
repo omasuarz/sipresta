@@ -1,12 +1,12 @@
 # SIPRESTA — Avisos automáticos (correo + notificación en el teléfono)
 
-Script de Google Apps Script que revisa los préstamos cada 10 minutos y envía:
-- un recordatorio **1 hora antes** del vencimiento;
+Script de Google Apps Script que revisa los préstamos cada 5 minutos y envía:
+- recordatorios **1 hora, 30 minutos y 15 minutos antes** del vencimiento;
 - un aviso cuando el préstamo **ya está atrasado** (desactivable con `AVISAR_ATRASO = false`).
 
 Llega por **correo** y, si el estudiante aceptó «Activar» en la app, como **notificación en su teléfono**
 (Firebase Cloud Messaging; en iPhone requiere haber agregado SIPRESTA a la pantalla de inicio, iOS 16.4+).
-Cada préstamo queda marcado en Firestore (`aviso1h`, `avisoAtraso`) para no repetir avisos.
+Cada préstamo queda marcado en Firestore (`aviso60`, `aviso30`, `aviso15`, `avisoAtraso`) para no repetir avisos.
 Los dispositivos se guardan en la colección `push/{uid}`.
 
 ## Instalación
