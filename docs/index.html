@@ -1530,6 +1530,7 @@ const ICO_CAT={ele:'<path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/>',ina:'<rect x="6
 const catIco=c=>{const n=String(c||'').toLowerCase();return /eléctr|electr/.test(n)?'ele':/inalámb|inalamb|batería/.test(n)?'ina':/manual/.test(n)?'man':/neum/.test(n)?'neu':/insumo/.test(n)?'ins':/protec|epp/.test(n)?'epp':'def';};
 const icoCat=c=>`<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICO_CAT[catIco(c)]}</svg>`;
 const ICO={reloj:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',sale:'<path d="M14 5h5v5"/><path d="M19 5l-8 8"/><path d="M17 14v5H5V7h5"/>',alerta:'<path d="M12 4l9 16H3z"/><path d="M12 10v4"/><path d="M12 17.2v.3"/>',ok:'<path d="M5 12.5l4.5 4.5L19 7.5"/>',x:'<path d="M6 6l12 12M18 6L6 18"/>',llave:'<path d="M14.5 6.5l3 3-8 8H6.5v-3z"/><path d="M13 8l3 3"/>'};
+ICO.cam='<path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13.5" r="3.5"/>';
 const ico=k=>`<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">${ICO[k]||''}</svg>`;
 const PICO={reservado:'reloj',entregado:'sale',atrasado:'alerta',devuelto:'ok',expirada:'reloj',cancelado:'x'};
 const hora=ms=>new Date(ms).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'});
@@ -1816,7 +1817,7 @@ function mostradorView(){
   const fila=(l,extra)=>{const t=T(l.herramientaId),late=estado(l)==='atrasado';return `<div class="mo-r${late?' late':''}"><span class="mo-n"><b>${esc(t?t.nombre:'Herramienta')}</b><span class="muted">${esc(persona(l))}</span></span><span class="mo-h">${late?ico('alerta')+'Atrasada':'vence '+esc(hora(ts(l.venceEn)))}</span>${extra||''}</div>`;};
   return `<div class="mostrador">
     <div class="mo-top"><span class="label">Modo mostrador</span><button class="btn small" type="button" data-act="mostrador">Salir</button></div>
-    <form class="mo-scan" data-form="scan"><input id="scan" placeholder="Escanea aquí" autocomplete="off" aria-label="Escanear cédula, herramienta o comprobante"><button class="btn primary" type="submit">Listo</button></form>
+    <form class="mo-scan" data-form="scan"><input id="scan" placeholder="Escanea aquí" autocomplete="off" aria-label="Escanear cédula, herramienta o comprobante"><button class="btn" type="button" data-act="cam-e" id="e-camb">${ico('cam')}Cámara</button><button class="btn primary" type="submit">Listo</button></form><div id="e-cam" class="cam" style="display:none"><video id="e-vid" playsinline muted></video><span class="cam-aim"></span><span class="cam-msg">Apunta a la cédula, la herramienta o el comprobante</span></div><label class="cam-foto" id="e-foto" hidden><input type="file" accept="image/*" capture="environment" hidden data-foto-scan="e">¿La cámara no lee el código? <u>Toma una foto</u></label>
     <p class="muted mo-ayuda">Comprobante de reserva → entrega · Herramienta prestada → devolución · Cédula o herramienta disponible → préstamo nuevo</p>
     <div class="mo-cols">
       <section class="mo-col"><h3>Para devolver <span class="mono muted">${sel.length}</span></h3>${sel.length?sel.map(l=>fila(l,`<button class="btn small" type="button" data-act="dev-qr-quitar-mo" data-id="${l.id}">Quitar</button>`)).join('')+`<button class="btn primary mo-reg" type="button" data-act="devolver-varias">Registrar devolución (${sel.length})</button>`:'<p class="empty">Escanea las herramientas que te devuelven.</p>'}</section>
@@ -1836,7 +1837,7 @@ function staffHoy(){
   const qe=norm(S.qe||'').trim(),okQ=x=>coincideLoan(x.l,qe);
   const enV=(F==='atr'?en.filter(x=>x.e==='atrasado'):en).filter(okQ),porV=por.filter(okQ);
   let h=`<div class="kpis">${kp('k-ok','Por retirar',por.length,'Reservas pendientes','por')}${kp('k-act','En préstamo',en.length,'Herramientas fuera del taller','en')}${kp('k-late','Atrasados',atr,'Requieren seguimiento','atr')}<button type="button" class="kpi k-mnt" data-act="ir-sanc"><span class="kpi-t">Sanciones activas</span><b>${san}</b><span class="kpi-c">Estudiantes bloqueados · ver en Usuarios</span></button></div>`;
-  h+=`<form class="scan" data-form="scan"><input id="scan" class="search" placeholder="Escanea cédula, herramienta o comprobante y Enter" autocomplete="off" aria-label="Escanear cédula, herramienta o comprobante"><button class="btn primary" type="submit">Prestar</button><button class="btn" type="button" data-act="dev-qr">Devolución con QR</button><button class="btn" type="button" data-act="mostrador">Modo mostrador</button></form>`;
+  h+=`<form class="scan" data-form="scan"><input id="scan" class="search" placeholder="Escanea cédula, herramienta o comprobante y Enter" autocomplete="off" aria-label="Escanear cédula, herramienta o comprobante"><button class="btn" type="button" data-act="cam-e" id="e-camb">${ico('cam')}Cámara</button><button class="btn primary" type="submit">Prestar</button><button class="btn" type="button" data-act="dev-qr">Devolución con QR</button><button class="btn" type="button" data-act="mostrador">Modo mostrador</button></form><div id="e-cam" class="cam" style="display:none"><video id="e-vid" playsinline muted></video><span class="cam-aim"></span><span class="cam-msg">Apunta a la cédula, la herramienta o el comprobante</span></div><label class="cam-foto" id="e-foto" hidden><input type="file" accept="image/*" capture="environment" hidden data-foto-scan="e">¿La cámara no lee el código? <u>Toma una foto</u></label>`;
   h+=`<div class="filters"><input id="qe" class="search" type="search" placeholder="Buscar estudiante por nombre o RUN, o por herramienta" value="${esc(S.qe||'')}" aria-label="Buscar préstamos por estudiante" autocomplete="off"></div>`;
   if(qe&&!enV.length&&!porV.length)h+=`<div class="note">Ningún préstamo ni reserva coincide con «${esc(S.qe)}».</div>`;
   if(F)h+=`<div class="filt-note">Mostrando: <b>${{por:'Por retirar',en:'En préstamo',atr:'Atrasados'}[F]}</b> <button type="button" class="btn small" data-act="fh" data-id="">Ver todo</button></div>`;
@@ -1949,7 +1950,7 @@ function camStop(){
   clearTimeout(cam.t);cam.t=0;
   if(cam.s){cam.s.getTracks().forEach(t=>t.stop());cam.s=null;}
   const pf=cam.pref||'p',b=document.getElementById(pf+'-cam'),v=document.getElementById(pf+'-vid'),bt=document.getElementById(pf+'-camb');
-  if(v)v.srcObject=null;if(b)b.style.display='none';if(bt)bt.textContent='Usar cámara';
+  if(v)v.srcObject=null;if(b)b.style.display='none';if(bt){if(pf==='e')bt.innerHTML=ico('cam')+'Cámara';else bt.textContent='Usar cámara';}
 }
 /* Lee un QR de un cuadro de video: alterna el centro del encuadre a resolución completa
    (etiquetas pequeñas) con el cuadro entero reducido (etiquetas grandes o lejos del centro). */
@@ -1979,8 +1980,17 @@ document.addEventListener('change',async ev=>{
     URL.revokeObjectURL(url);
   }catch(e){}
   if(!raw)return toast('No encontré un código en la foto. Acércate a la etiqueta y que salga nítida.');
-  (pf==='d'?escaneoDev:aplicarEscaneo)(raw);
+  (pf==='d'?escaneoDev:pf==='e'?procesarScanEstacion:aplicarEscaneo)(raw);
 },true);
+/* Escaneo desde la Estación o el Modo mostrador (lector USB, teclado o cámara). */
+async function procesarScanEstacion(c){
+  c=String(c||'').trim();if(!c)return;
+  if(S.mostrador){await scanMostrador(c);const f=document.getElementById('scan');if(f)f.focus();return;}
+  const r=parseScan(c);
+  if(r&&r.t==='res')await entregarReserva(r.id);
+  else if(r&&r.t==='tool'&&debeDevolver(r)){actions['dev-qr']();escaneoDev(c);}
+  else{actions.prestar('');aplicarEscaneo(c);}
+}
 async function camToggle(){
   if(cam.s)return camStop();
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return toast('Este navegador o esta vista no permite usar la cámara. Usa un lector o escribe el código.');
@@ -1988,7 +1998,7 @@ async function camToggle(){
   catch(e){return toast(e&&e.name==='NotAllowedError'?'No hay permiso para usar la cámara. Revisa los permisos del navegador o de esta vista.':'No se pudo abrir la cámara.');}
   const pf=cam.pref||'p',box=document.getElementById(pf+'-cam'),v=document.getElementById(pf+'-vid'),bt=document.getElementById(pf+'-camb');
   if(!v){camStop();return;}
-  box.style.display='';bt.textContent='Cerrar cámara';v.srcObject=cam.s;
+  box.style.display='';bt.textContent='Cerrar cámara';v.srcObject=cam.s;if(pf==='e')try{box.scrollIntoView({behavior:'smooth',block:'center'});}catch(e){}
   try{await v.play();}catch(e){}
   cam.det=null;
   if('BarcodeDetector' in window){try{cam.det=new BarcodeDetector({formats:['qr_code','pdf417','code_128','code_39','ean_13','data_matrix']});}catch(e){cam.det=null;}}
@@ -2001,7 +2011,7 @@ async function camToggle(){
         if(cam.det){const r=await cam.det.detect(v);if(r.length)raw=r[0].rawValue||'';}
         if(!raw&&window.jsQR)raw=leerQR(v,v.videoWidth,v.videoHeight,cam.c,cam.n++);
       }catch(e){}
-      if(raw&&(raw!==cam.last||Date.now()-cam.lastT>2500)){cam.last=raw;cam.lastT=Date.now();try{navigator.vibrate&&navigator.vibrate(60);}catch(e){}(cam.pref==='d'?escaneoDev:aplicarEscaneo)(raw);}
+      if(raw&&(raw!==cam.last||Date.now()-cam.lastT>2500)){cam.last=raw;cam.lastT=Date.now();try{navigator.vibrate&&navigator.vibrate(60);}catch(e){}(cam.pref==='d'?escaneoDev:cam.pref==='e'?(x=>{camStop();procesarScanEstacion(x);}):aplicarEscaneo)(raw);}
     }
     cam.t=setTimeout(loop,cam.det?120:90);
   };
@@ -2854,6 +2864,7 @@ const actions={
     if(k==='Feriados')ferAbierto=true;if(k==='Apariencia')aparAbierta=true;render();
     setTimeout(()=>{const h2=[...document.querySelectorAll('.main h3')].find(x=>x.textContent.trim().startsWith(k));if(h2)h2.scrollIntoView({behavior:'smooth',block:'start'});},80);},
   'cam-toggle':()=>{if(cam.s&&cam.pref!=='p')camStop();cam.pref='p';camToggle();},
+  'cam-e':()=>{if(cam.s&&cam.pref!=='e')camStop();cam.pref='e';const f=document.getElementById('e-foto');if(f)f.hidden=false;camToggle();},
   'cam-dev':()=>{if(cam.s&&cam.pref!=='d')camStop();cam.pref='d';camToggle();},
   'dev-qr':()=>{S.devSel=[];S.fh='';sheet(`<h2>Devolución con QR</h2><p class="muted">Escanea la etiqueta de cada herramienta que te devuelven, con el lector, la cámara o escribiendo el código. Se van sumando a la lista y al final registras todas juntas.</p>
     <div class="scanrow"><input id="d-scan" class="search" placeholder="Escanear o escribir código y Enter" autocomplete="off" aria-label="Escanear herramienta devuelta"><button class="btn" type="button" data-act="cam-dev" id="d-camb">Usar cámara</button></div>
@@ -3478,11 +3489,7 @@ document.addEventListener('submit',async e=>{
     if(k==='scan'){
       const c=val('scan');if(!c)return;
       const e=document.getElementById('scan');if(e)e.value='';
-      if(S.mostrador){await scanMostrador(c);const f=document.getElementById('scan');if(f)f.focus();return;}
-      const r=parseScan(c);
-      if(r&&r.t==='res')await entregarReserva(r.id);
-      else if(r&&r.t==='tool'&&debeDevolver(r)){actions['dev-qr']();escaneoDev(c);}
-      else{actions.prestar('');aplicarEscaneo(c);}
+      await procesarScanEstacion(c);return;
     }
     if(k==='ajustes-reglas'){
       const n=(id,d,mn,mx)=>{const x=parseInt(val(id),10);return Math.min(mx,Math.max(mn,isNaN(x)?d:x));};
