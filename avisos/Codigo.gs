@@ -59,7 +59,8 @@ function revisarVencimientos() {
     const t = cache[p.herramientaId] || (cache[p.herramientaId] = leer_('herramientas/' + p.herramientaId) || {});
     const herr = (t.nombre || 'la herramienta') + (t.codigo ? ' (' + t.codigo + ')' : '');
     const hora = fechaES_(new Date(vence));
-    const nombre = ((est && (est.nombres || est.nombre)) || '').split(' ')[0] || 'Hola';
+    const primera = function (x) { return String(x || '').trim().split(/\s+/)[0] || ''; };
+    const nombre = est ? ((est.nombres && est.apellidos) ? primera(est.nombres) + ' ' + primera(est.apellidos) : String(est.nombre || '').trim()) : '';
     const faltaTxt = min >= 60 ? '1 hora' : Math.max(1, Math.round(falta / 60000)) + ' minutos';
     const queda = (min >= 60 ? 'Queda ' : 'Quedan ') + faltaTxt;
     const contacto = [cfg.horario ? 'Horario: ' + cfg.horario : '', cfg.ubicacion ? 'Ubicación: ' + cfg.ubicacion : '',
@@ -68,11 +69,11 @@ function revisarVencimientos() {
     let asunto, cuerpo;
     if (tipo !== 'avisoAtraso') {
       asunto = (min <= 15 ? queda + ': ' : 'Recordatorio: ') + 'devuelve ' + (t.nombre || 'tu herramienta') + ' antes de las ' + Utilities.formatDate(new Date(vence), ZONA, 'HH:mm');
-      cuerpo = nombre + ',\n\nTe recordamos que el préstamo de ' + herr + ' vence el ' + hora + ' (en ' + faltaTxt + ').\n\n'
+      cuerpo = 'Hola ' + (nombre || '') + ',\n\nTe recordamos que el préstamo de ' + herr + ' vence el ' + hora + ' (en ' + faltaTxt + ').\n\n'
         + 'Devuélvela a tiempo en el Taller de Herramientas y Materiales para evitar una sanción.';
     } else {
       asunto = 'Préstamo atrasado: ' + (t.nombre || 'herramienta');
-      cuerpo = nombre + ',\n\nEl préstamo de ' + herr + ' venció el ' + hora + ' y aún no se registra su devolución.\n\n'
+      cuerpo = 'Hola ' + (nombre || '') + ',\n\nEl préstamo de ' + herr + ' venció el ' + hora + ' y aún no se registra su devolución.\n\n'
         + 'Devuélvela lo antes posible en el Taller de Herramientas y Materiales. Los atrasos generan sanciones según el reglamento del taller.';
     }
     cuerpo += '\n\nRevisa tus préstamos en ' + URL_APP + (contacto ? '\n\n' + contacto : '')
