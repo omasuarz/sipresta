@@ -1470,7 +1470,7 @@ async function migrarPlazo24(){
     if(ts.length)toast('Plazo de préstamo actualizado a 24 h en '+ts.length+' herramientas.');
   }catch(e){mig24=false;}
 }
-const DEF={maxPorEstudiante:3,minutosRetiro:15,diasSancion:2,san1:5,san2:20,san3:40,horario:'',correo:'',telefono:'',ubicacion:'',mapa:'',instagram:''};
+const DEF={maxPorEstudiante:3,minutosRetiro:15,diasSancion:2,san1:5,san2:20,san3:40,sanExtra:1,sanTope:10,sanTol:15,horario:'',correo:'',telefono:'',ubicacion:'',mapa:'',instagram:''};
 const S={go:{},sel:{},fic:'',fiv:'',fiu:'',fuf:'todos',fuc:'',fua:'',db:null,user:null,uid:null,isStaff:false,status:'cargando',view:'student',
   tab:{student:'catalogo',staff:'hoy'},name:'',tools:[],loans:[],sanc:[],users:[],cfg:{...DEF},prof:{},
   q:'',fh:'',fi:'',qe:'',qh:'',qi:'',qu:'',fur:'',draft:null,invModo:'lista',bulk:false,cat:'Todas',loaded:{tools:false,loans:false},hist:40};
@@ -1754,7 +1754,7 @@ function reglamento(){
 </dl></div></section>
   <section class="panel-list"><h3>Límites y sanciones</h3><div class="row"><dl class="reglas">
     <dt>Límite</dt><dd>Hasta ${c.maxPorEstudiante} herramientas a la vez entre reservas y préstamos.</dd>
-    <dt>Sanciones</dt><dd>Cada atraso en la devolución bloquea nuevas reservas por días hábiles (lunes a viernes, sin contar feriados ni días en que el taller esté cerrado).<span style="display:block;margin-top:6px">Primer atraso: <b>${sanEsc()[0]} días</b>.</span><span style="display:block">Segundo atraso: <b>${sanEsc()[1]} días</b>.</span><span style="display:block">Tercer atraso: <b>${sanEsc()[2]} días</b>.</span></dd>
+    <dt>Sanciones</dt><dd>Cada atraso en la devolución bloquea nuevas reservas por días hábiles (lunes a viernes, sin contar feriados ni días en que el taller esté cerrado).<span style="display:block;margin-top:6px">Primer atraso: <b>${sanEsc()[0]} días</b>.</span><span style="display:block">Segundo atraso: <b>${sanEsc()[1]} días</b>.</span><span style="display:block">Tercer atraso: <b>${sanEsc()[2]} días</b>.</span>${sanCfg().extra?`<span style="display:block;margin-top:6px">Además, se suma${sanCfg().extra===1?' 1 día hábil':'n '+sanCfg().extra+' días hábiles'} por cada día adicional de atraso (máximo ${sanCfg().tope} extra).</span>`:''}${sanCfg().tol?`<span style="display:block">Tolerancia: ${sanCfg().tol} minutos.</span>`:''}</dd>
     ${reglasLS().filter(r=>r.t||r.x).map(r=>`<dt>${esc(r.t||'')}</dt><dd>${fmtRegla(r.x)}</dd>`).join('')}</dl></div></section>
   <section class="panel-list"><h3>Horarios del taller</h3><div class="row"><dl class="reglas">
     <dt>Atención</dt><dd>${c.horario?horarioLineas(c.horario):'Consulta el horario con el encargado.'}</dd>
@@ -2326,6 +2326,13 @@ function aparienciaPanel(conColores){
 }
 const sanEsc=()=>{const c=S.cfg||{};return [c.san1,c.san2,c.san3].map((v,i)=>Math.max(1,parseInt(v,10)||[5,20,40][i]));};
 const diasSancionVez=n=>sanEsc()[Math.min(Math.max(0,n),2)];
+const sanCfg=()=>{const c=S.cfg||{},n=(v,d,lo,hi)=>{const x=parseInt(v,10);return Math.min(hi,Math.max(lo,isNaN(x)?d:x));};return {extra:n(c.sanExtra,1,0,30),tope:n(c.sanTope,10,0,200),tol:n(c.sanTol,15,0,240)};};
+/* Días de atraso: cada 24 h (o fracción) después del vencimiento + la tolerancia. 0 = dentro de la tolerancia. */
+function diasAtraso(ls,now){const {tol}=sanCfg();return Math.max(0,...[].concat(ls).map(l=>{const ms=(now||Date.now())-ts(l.venceEn)-tol*60000;return ms>0?Math.ceil(ms/864e5):0;}));}
+/* Sanción = base según el n.º de atraso (1.º, 2.º, 3.º+) + días extra por cada día adicional de atraso, con tope. */
+function calcSancion(n,ls,now){const {extra,tope}=sanCfg(),dA=diasAtraso(ls,now),base=diasSancionVez(n),ex=dA>0?Math.min(tope,extra*(dA-1)):0;return {dA,base,ex,total:dA>0?base+ex:0};}
+const txtSanc=(n,c)=>c.dA===0?`Atraso dentro de la tolerancia (${sanCfg().tol} min): sin sanción`:`${n+1}.º atraso, ${c.dA} ${c.dA===1?'día':'días'} de atraso: ${c.ex?c.base+' + '+c.ex+' = ':''}<b>${c.total} días hábiles</b> (hasta el ${esc(fmtHabil(sumarHabiles(Date.now(),c.total)))})`;
+const txtExtra=()=>{const {extra,tope,tol}=sanCfg();return (extra?`, más ${extra} ${extra===1?'día hábil':'días hábiles'} por cada día adicional de atraso (máximo ${tope} extra)`:'')+(tol?`. Hay ${tol} minutos de tolerancia`:'');};
 function sumarHabiles(ms,d){let x=ms,k=0,g=0;while(k<d&&g<500){x+=864e5;g++;if(esHabil(x))k++;}return x;}
 const fmtHabil=ms=>new Date(ms).toLocaleDateString('es-CL',{weekday:'long',day:'numeric',month:'long'});
 function gruposAtraso(ls){const nn=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();const m=new Map();
@@ -2392,7 +2399,7 @@ function fmtRegla(x){return esc(x||'').replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').rep
 function leerRL(){return [...document.querySelectorAll('.rl-item')].map(el=>({t:el.querySelector('.rl-t').value.trim(),x:el.querySelector('.rl-x').value.trim()}));}
 function reglasForm(){const l=S.rlDraft||reglasLS(),c=S.cfg,sucio=!!S.rlDraft;
   return `<section class="panel-list"><h3>Límites y sanciones (texto de Reglas)</h3><div class="row" style="display:block"><p class="muted">Lo que escribas aquí se muestra a los estudiantes en <b>Reglas › Límites y sanciones</b>. Para destacar en negrita, encierra el texto entre dos asteriscos: **60 días hábiles**.</p>
-   <div class="rl-auto"><span class="label">Se generan solos con las Condiciones de préstamo</span><p><b>Límite:</b> hasta ${c.maxPorEstudiante} herramientas a la vez.</p><p><b>Sanciones por atraso:</b> ${sanEsc()[0]}, ${sanEsc()[1]} y ${sanEsc()[2]} días hábiles.</p></div>
+   <div class="rl-auto"><span class="label">Se generan solos con las Condiciones de préstamo</span><p><b>Límite:</b> hasta ${c.maxPorEstudiante} herramientas a la vez.</p><p><b>Sanciones por atraso:</b> ${sanEsc()[0]}, ${sanEsc()[1]} y ${sanEsc()[2]} días hábiles${txtExtra()}.</p></div>
    <div class="rl-list">${l.map((r,i)=>`<div class="rl-item"><div class="rl-top"><input class="rl-t" value="${esc(r.t||'')}" placeholder="Título (ej.: Herramienta dañada)" aria-label="Título del apartado ${i+1}"><span class="row-acts">${i>0?`<button class="btn small" type="button" data-act="rl-up" data-id="${i}" aria-label="Subir">↑</button>`:''}<button class="btn small danger" type="button" data-act="rl-del" data-id="${i}">Quitar</button></span></div><textarea class="rl-x" rows="4" placeholder="Texto que verán los estudiantes" aria-label="Texto del apartado ${i+1}">${esc(r.x||'')}</textarea></div>`).join('')||'<p class="empty">No hay apartados. Agrega uno.</p>'}</div>
    <div class="actions" style="justify-content:flex-start;margin-top:12px"><button class="btn" type="button" data-act="rl-add">+ Agregar apartado</button><button class="btn primary" type="button" data-act="rl-save">Guardar texto</button>${sucio?'<button class="btn" type="button" data-act="rl-cancel">Descartar</button>':''}<button class="btn small" type="button" data-act="rl-reset">Restablecer texto original</button></div></div></section>`;}
 function plegarConfig(){
@@ -2439,7 +2446,12 @@ function staffAjustes(){
    <fieldset style="margin-top:14px"><legend class="label">Sanción por atraso (días hábiles sin reservas)</legend><p class="muted" style="font-size:var(--s0)">Se cuentan de lunes a viernes, sin contar feriados ni cierres de día completo. La sanción aumenta según cuántas veces se ha atrasado el usuario; desde el tercer atraso se aplica siempre el tercer valor.</p><div class="two" style="grid-template-columns:repeat(3,minmax(0,1fr));align-items:end">
    ${fld('a-san1','Primer atraso',sanEsc()[0],'','type="number" min="1" max="200"')}
    ${fld('a-san2','Segundo atraso',sanEsc()[1],'','type="number" min="1" max="200"')}
-   ${fld('a-san3','Tercer atraso o más',sanEsc()[2],'','type="number" min="1" max="200"')}</div></fieldset>
+   ${fld('a-san3','Tercer atraso o más',sanEsc()[2],'','type="number" min="1" max="200"')}</div>
+   <p class="muted" style="font-size:var(--s0);margin-top:12px">A esa base se suman días por la duración del atraso: cada día adicional de atraso (24 h) agrega días hábiles, hasta el máximo indicado. Ej.: primer atraso de 3 días = ${sanEsc()[0]} + ${Math.min(sanCfg().tope,2*sanCfg().extra)} = ${sanEsc()[0]+Math.min(sanCfg().tope,2*sanCfg().extra)} días hábiles.</p>
+   <div class="two" style="grid-template-columns:repeat(3,minmax(0,1fr));align-items:end">
+   ${fld('a-sanx','Días extra por cada día de atraso',sanCfg().extra,'','type="number" min="0" max="30"')}
+   ${fld('a-sant','Máximo de días extra',sanCfg().tope,'','type="number" min="0" max="200"')}
+   ${fld('a-sanl','Tolerancia (minutos)',sanCfg().tol,'','type="number" min="0" max="240"')}</div></fieldset>
    <div class="actions" style="margin-top:12px"><button class="btn primary" type="submit">Guardar condiciones</button></div></div></form>
   ${esAdmin()?reglasForm():''}
   ${categoriasForm()}
@@ -2714,11 +2726,11 @@ const actions={
     const mins=Math.min(S.cfg.minutosRetiro,rest);
     if(!reglasVistas())return sheet(`<h2>Antes de tu primera reserva</h2><p class="muted">Son tres reglas. Las aceptas una sola vez.</p>
       <ol class="onb"><li>${ico('reloj')}<div><b>Plazo de devolución</b><span>Cada herramienta tiene su plazo (normalmente 24 h). Si vence con el taller cerrado, pasa a la siguiente apertura.</span></div></li>
-      <li>${ico('alerta')}<div><b>Atrasos</b><span>Cada atraso bloquea tus reservas por días hábiles: ${sanEsc()[0]} la primera vez, ${sanEsc()[1]} la segunda y ${sanEsc()[2]} desde la tercera.</span></div></li>
+      <li>${ico('alerta')}<div><b>Atrasos</b><span>Cada atraso bloquea tus reservas por días hábiles: ${sanEsc()[0]} la primera vez, ${sanEsc()[1]} la segunda y ${sanEsc()[2]} desde la tercera${txtExtra()}.</span></div></li>
       <li>${ico('llave')}<div><b>Cuidado y daños</b><span>Devuélvela limpia y completa. Si vuelve dañada, el taller evalúa el costo de reparación o reposición.</span></div></li></ol>
       <div class="actions">${close}<button class="btn primary" type="button" data-act="reglas-ok" data-id="${id}">Entendido, continuar</button></div>`);
     sheet(`<h2>Reservar ${esc(t.nombre)}</h2><p>Tienes <b>${mins} minutos</b> para retirarla en el taller, hasta las <b>${esc(new Date(Date.now()+mins*60e3).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}))}</b>${mins<S.cfg.minutosRetiro?' (el taller cierra a las '+esc(et.fin)+')':''}. Si no llegas, la reserva se anula.</p>
-      <p class="muted">Una vez entregada, el plazo de devolución es de ${t.plazoHoras||24} h. Si ese plazo termina con el taller cerrado (fin de semana, feriado o fuera de horario), la devolución pasa a la siguiente apertura. Si te atrasas, no podrás reservar por ${sanEsc()[0]} días hábiles la primera vez, ${sanEsc()[1]} la segunda y ${sanEsc()[2]} desde la tercera.</p>
+      <p class="muted">Una vez entregada, el plazo de devolución es de ${t.plazoHoras||24} h. Si ese plazo termina con el taller cerrado (fin de semana, feriado o fuera de horario), la devolución pasa a la siguiente apertura. Si te atrasas, no podrás reservar por ${sanEsc()[0]} días hábiles la primera vez, ${sanEsc()[1]} la segunda y ${sanEsc()[2]} desde la tercera${txtExtra()}.</p>
       ${eppAviso(eppDe(t),'r-epp')}
       <div class="actions">${close}<button class="btn primary" data-act="reservar-ok" data-id="${id}">Confirmar reserva</button></div>`);
   },
@@ -2747,7 +2759,7 @@ const actions={
       <fieldset><legend class="label">Estado al recibir</legend>
         <label class="chk"><input type="radio" name="cond" value="ok" checked> En buen estado</label>
         <label class="chk"><input type="radio" name="cond" value="dano"> Con daño o faltante (queda en mantención)</label></fieldset>
-      ${late?(()=>{const n=atrasosPrevios(l),d=diasSancionVez(n);return `<label class="chk"><input type="checkbox" id="f-sanc" checked> Aplicar sanción por atraso: ${n+1}.º atraso, ${d} días hábiles (hasta el ${esc(fmtHabil(sumarHabiles(Date.now(),d)))})</label>`;})():''}
+      ${late?(()=>{const n=atrasosPrevios(l),c=calcSancion(n,l);return `<label class="chk"><input type="checkbox" id="f-sanc" ${c.total?'checked':'disabled'}> ${c.total?'Aplicar sanción por atraso: ':''}${txtSanc(n,c)}</label>`;})():''}
       <div class="field"><label for="f-nota">Observación (opcional)</label><textarea id="f-nota"></textarea></div>
       <div class="actions">${close}<button class="btn primary" data-act="devolver-ok" data-id="${id}">Confirmar devolución</button></div>`);
   },
@@ -2758,7 +2770,7 @@ const actions={
     const ls=(S.devSel||[]).map(id=>S.loans.find(l=>l.id===id)).filter(l=>l&&vivo(l));if(!ls.length)return toast('Selecciona al menos una herramienta.');
     const grupos=gruposAtraso(ls);
     const filas=ls.map(l=>{const t=T(l.herramientaId),e=estado(l);return `<div class="it"><span class="it-t"><b>${esc(t?t.nombre:'Herramienta')}</b> <span class="mono muted">${esc(t?t.codigo||'':'')}</span><br><span class="muted">${esc(persona(l))}</span> ${e==='atrasado'?pill(e):''}</span><label class="chk" style="font-size:var(--s0)"><input type="checkbox" class="dv-dano" value="${l.id}"> Con daño</label></div>`;}).join('');
-    const sanc=grupos.map((g,i)=>{const n=atrasosPrevios(g.ls[0]),d=diasSancionVez(n);return `<label class="chk"><input type="checkbox" id="dv-s-${i}" checked> Sancionar a ${esc(persona(g.ls[0]))} por atraso${g.ls.length>1?' ('+g.ls.length+' herramientas)':''}: ${n+1}.º atraso, ${d} días hábiles (hasta el ${esc(fmtHabil(sumarHabiles(Date.now(),d)))})</label>`;}).join('');
+    const sanc=grupos.map((g,i)=>{const n=atrasosPrevios(g.ls[0]),c=calcSancion(n,g.ls);return `<label class="chk"><input type="checkbox" id="dv-s-${i}" ${c.total?'checked':'disabled'}> ${c.total?'Sancionar a ':''}${esc(persona(g.ls[0]))}${g.ls.length>1?' ('+g.ls.length+' herramientas)':''}: ${txtSanc(n,c)}</label>`;}).join('');
     sheet(`<h2>Registrar devolución</h2><p class="muted">${ls.length} herramienta${ls.length===1?'':'s'} seleccionada${ls.length===1?'':'s'}. Todas se reciben en buen estado, salvo las que marques «Con daño» (quedan en mantención).</p>
       <div class="items">${filas}</div>
       ${sanc?`<fieldset><legend class="label">Atrasos</legend><p class="muted" style="font-size:var(--s0)">Si un estudiante devuelve varias herramientas atrasadas a la vez, se cuenta como un solo atraso.</p>${sanc}</fieldset>`:''}
@@ -2769,7 +2781,7 @@ const actions={
     const ls=(S.devSel||[]).map(id=>S.loans.find(l=>l.id===id)).filter(l=>l&&vivo(l));if(!ls.length)return sheet('');
     const danos=new Set([...document.querySelectorAll('.dv-dano:checked')].map(x=>x.value)),nota=val('dv-nota'),now=Date.now();
     const grupos=gruposAtraso(ls),aplicar=grupos.map((g,i)=>!!(document.getElementById('dv-s-'+i)||{}).checked);
-    const plan=grupos.map((g,i)=>{const vez=atrasosPrevios(g.ls[0])+1;return {g,vez,dh:diasSancionVez(vez-1),ok:aplicar[i]};});
+    const plan=grupos.map((g,i)=>{const vez=atrasosPrevios(g.ls[0])+1,c=calcSancion(vez-1,g.ls,now);return {g,vez,dh:c.total,dA:c.dA,ok:aplicar[i]&&c.total>0};});
     const porTool={},prevL=ls.map(l=>({id:l.id,nota:l.nota})),prevT=[...new Set(ls.filter(l=>danos.has(l.id)).map(l=>l.herramientaId))].map(T).filter(Boolean).map(t=>({id:t.id,fuera:t.fuera,fueraExtra:t.fueraExtra,mantenciones:t.mantenciones}));
     for(const l of ls){const d=danos.has(l.id);await S.db.doc('prestamos/'+l.id).update({estado:'devuelto',devueltoEn:iso(now),condicion:d?'dano':'ok',nota:nota||null});if(d)(porTool[l.herramientaId]=porTool[l.herramientaId]||[]).push(l);}
     for(const [tid,arr] of Object.entries(porTool)){const t=T(tid);if(!t)continue;const k=arr.length,conU=unidadesDe(t).length>0;
@@ -2777,7 +2789,7 @@ const actions={
       await S.db.doc('herramientas/'+t.id).update({...(conU?{fuera:(t.fuera||0)+k,fueraExtra:(t.fueraExtra||0)+k}:{fuera:(t.fuera||0)+k}),mantenciones:[...(t.mantenciones||[]),...mms]});}
     let ns=0;
     for(const p of plan){if(!p.ok)continue;const l=p.g.ls[0],nombres=p.g.ls.map(x=>{const t=T(x.herramientaId);return t?t.nombre:'una herramienta';}).join(', ');ns++;
-      await col('sanciones').add({estudianteId:l.estudianteId||null,estudianteTexto:l.estudianteTexto||null,motivo:(p.vez>1?p.vez+'.º atraso: ':'')+'Atraso en la devolución de '+nombres+' ('+p.dh+' días hábiles).',creado:iso(now),hasta:iso(sumarHabiles(now,p.dh)),activa:true,prestamoId:l.id,prestamoIds:p.g.ls.map(x=>x.id),atraso:true,vez:p.vez,diasHabiles:p.dh,...(nota?{obs:nota,obsPor:S.name||'',obsEn:iso(now)}:{})});}
+      await col('sanciones').add({estudianteId:l.estudianteId||null,estudianteTexto:l.estudianteTexto||null,motivo:(p.vez>1?p.vez+'.º atraso: ':'')+'Atraso de '+p.dA+(p.dA===1?' día':' días')+' en la devolución de '+nombres+' ('+p.dh+' días hábiles).',diasAtraso:p.dA,creado:iso(now),hasta:iso(sumarHabiles(now,p.dh)),activa:true,prestamoId:l.id,prestamoIds:p.g.ls.map(x=>x.id),atraso:true,vez:p.vez,diasHabiles:p.dh,...(nota?{obs:nota,obsPor:S.name||'',obsEn:iso(now)}:{})});}
     const n=ls.length;S.devSel=[];sheet('');render();toastUndo(n+(n===1?' devolución registrada':' devoluciones registradas')+(ns?'. Se aplicó '+(ns===1?'1 sanción':ns+' sanciones')+'.':'.'),()=>deshacerDevol(prevL,prevT,now));
   },
   'devolver-ok':async id=>{
@@ -2789,9 +2801,9 @@ const actions={
     const prevL=[{id,nota:l.nota}],prevT=t?[{id:t.id,fuera:t.fuera,fueraExtra:t.fueraExtra,mantenciones:t.mantenciones}]:[];
     await S.db.doc('prestamos/'+id).update({estado:'devuelto',devueltoEn:iso(now),condicion:dano?'dano':'ok',nota:nota||null});
     if(dano&&t){const conU=unidadesDe(t).length>0;const mm={id:'m'+now.toString(36),fecha:iso(now),motivo:'Daño o faltante al devolver'+(nota?': '+nota:''),unidad:'',ref:l.unidadBien||l.unidadSerie||'',por:S.name||'',estado:'abierta'};await S.db.doc('herramientas/'+t.id).update({...(conU?{fuera:(t.fuera||0)+1,fueraExtra:(t.fueraExtra||0)+1}:{fuera:(t.fuera||0)+1}),mantenciones:[...(t.mantenciones||[]),mm]});}
-    const vez=atrasosPrevios(l)+1,dh=diasSancionVez(vez-1);
-    if(sanc)await col('sanciones').add({estudianteId:l.estudianteId||null,estudianteTexto:l.estudianteTexto||null,motivo:(vez>1?vez+'.º atraso: ':'')+'Atraso en la devolución de '+(t?t.nombre:'una herramienta')+' ('+dh+' días hábiles).',creado:iso(now),hasta:iso(sumarHabiles(now,dh)),activa:true,prestamoId:id,atraso:true,vez,diasHabiles:dh,...(nota?{obs:nota,obsPor:S.name||'',obsEn:iso(now)}:{})});
-    sheet('');toastUndo(sanc?'Devolución registrada. Se aplicó una sanción.':'Devolución registrada.',()=>deshacerDevol(prevL,dano?prevT:[],now));
+    const vez=atrasosPrevios(l)+1,cs=calcSancion(vez-1,l,now),dh=cs.total;
+    if(sanc&&dh)await col('sanciones').add({estudianteId:l.estudianteId||null,estudianteTexto:l.estudianteTexto||null,motivo:(vez>1?vez+'.º atraso: ':'')+'Atraso de '+cs.dA+(cs.dA===1?' día':' días')+' en la devolución de '+(t?t.nombre:'una herramienta')+' ('+dh+' días hábiles).',diasAtraso:cs.dA,creado:iso(now),hasta:iso(sumarHabiles(now,dh)),activa:true,prestamoId:id,atraso:true,vez,diasHabiles:dh,...(nota?{obs:nota,obsPor:S.name||'',obsEn:iso(now)}:{})});
+    sheet('');toastUndo(sanc&&dh?'Devolución registrada. Se aplicó una sanción de '+dh+' días hábiles.':'Devolución registrada.',()=>deshacerDevol(prevL,dano?prevT:[],now));
   },
 
   'prestar':id=>{
@@ -3345,7 +3357,7 @@ function sheetRcpt(id){
   sheet(`<div class="rcpt"><div class="rc-h"><b>SIPRESTA</b><span>Taller de Herramientas y Materiales · Escuela de Arquitectura · Universidad de Talca</span></div>
     <h2>Comprobante de ${e==='devuelto'?'devolución':'préstamo'}</h2>
     <table class="rc-t">${r('N°',String(l.id).slice(-6).toUpperCase())}${r('Estudiante',reg?reg.nombre:persona(l))}${r('RUN',reg&&reg.run)}${r('Matrícula',reg&&reg.matricula)}${r('Herramienta',t?t.nombre+(t.codigo?' ('+t.codigo+')':''):'')}${r('Unidad',(l.unidadBien||'')+(l.unidadSerie?' · serie '+l.unidadSerie:''))}${r('Entregada',fmtFull(l.entregadoEn))}${r('Devolver antes de',fmtFull(l.venceEn))}${r('Devuelta',fmtFull(l.devueltoEn))}${r('Estado al recibir',l.condicion==='dano'?'Con daño o faltante':(l.condicion==='ok'?'Buen estado':''))}${r('Observación',l.nota)}</table>
-    <p class="rc-n">Me comprometo a devolver la herramienta en el plazo indicado y en el mismo estado en que la recibí. Los atrasos se sancionan con ${sanEsc()[0]} días hábiles sin reservas la primera vez, ${sanEsc()[1]} la segunda y ${sanEsc()[2]} desde la tercera.</p>
+    <p class="rc-n">Me comprometo a devolver la herramienta en el plazo indicado y en el mismo estado en que la recibí. Los atrasos se sancionan con ${sanEsc()[0]} días hábiles sin reservas la primera vez, ${sanEsc()[1]} la segunda y ${sanEsc()[2]} desde la tercera${txtExtra()}.</p>
     <div class="rc-f"><div><i></i>Firma del estudiante</div><div><i></i>Firma del encargado</div></div></div>
     <div class="actions no-print">${close}<button class="btn primary" type="button" data-act="imprimir-rcpt">Imprimir</button></div>`);
 }
@@ -3439,7 +3451,7 @@ Object.assign(actions,{
     const hr=S.cfg.horario?'\n\nHorario de atención:\n'+S.cfg.horario.split(' · ').join('\n'):'';
     const firma='\n\nSaludos,\n'+(S.name||'Equipo del taller')+'\nTaller de Herramientas y Materiales · Escuela de Arquitectura · Universidad de Talca'+(S.cfg.telefono?'\nTeléfono: '+S.cfg.telefono:'');
     let asunto,cuerpo;
-    if(e==='atrasado'){asunto='Atraso en la devolución de '+tn;cuerpo='Hola '+f1+',\n\nLa devolución de '+tn+' venció el '+fmt(l.venceEn)+' y aún no la registramos. Por favor devuélvela a la brevedad: los atrasos generan una sanción de '+sanEsc()[0]+' días hábiles sin reservas la primera vez, '+sanEsc()[1]+' la segunda y '+sanEsc()[2]+' desde la tercera.'+hr+firma;}
+    if(e==='atrasado'){asunto='Atraso en la devolución de '+tn;cuerpo='Hola '+f1+',\n\nLa devolución de '+tn+' venció el '+fmt(l.venceEn)+' y aún no la registramos. Por favor devuélvela a la brevedad: los atrasos generan una sanción de '+sanEsc()[0]+' días hábiles sin reservas la primera vez, '+sanEsc()[1]+' la segunda y '+sanEsc()[2]+' desde la tercera'+txtExtra()+'.'+hr+firma;}
     else if(e==='reservado'){asunto='Tu reserva de '+tn+' está lista';cuerpo='Hola '+f1+',\n\nTu reserva de '+tn+' te espera en el taller. Debes retirarla antes de las '+new Date(ts(l.retiroLimite)).toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'})+'; después de esa hora se libera para otros estudiantes.'+hr+firma;}
     else{asunto='Recordatorio: devolución de '+tn;cuerpo='Hola '+f1+',\n\nTe recordamos que '+tn+' debe devolverse antes del '+fmt(l.venceEn)+'.'+hr+firma;}
     sheet(`<h2>Aviso por correo</h2><p class="muted">Revisa el mensaje y envíalo desde tu correo. ${reg&&reg.correo?'':'Este estudiante no tiene correo registrado: escríbelo abajo.'}</p>
@@ -3471,8 +3483,8 @@ document.addEventListener('submit',async e=>{
       else{actions.prestar('');aplicarEscaneo(c);}
     }
     if(k==='ajustes-reglas'){
-      const n=(id,d,mn,mx)=>Math.min(mx,Math.max(mn,parseInt(val(id),10)||d));
-      await S.db.doc('ajustes/general').set({...S.cfg,maxPorEstudiante:n('a-max',3,1,20),minutosRetiro:n('a-ret',15,1,240),san1:n('a-san1',5,1,200),san2:n('a-san2',20,1,200),san3:n('a-san3',40,1,200)});
+      const n=(id,d,mn,mx)=>{const x=parseInt(val(id),10);return Math.min(mx,Math.max(mn,isNaN(x)?d:x));};
+      await S.db.doc('ajustes/general').set({...S.cfg,maxPorEstudiante:n('a-max',3,1,20),minutosRetiro:n('a-ret',15,1,240),san1:n('a-san1',5,1,200),san2:n('a-san2',20,1,200),san3:n('a-san3',40,1,200),sanExtra:n('a-sanx',1,0,30),sanTope:n('a-sant',10,0,200),sanTol:n('a-sanl',15,0,240)});
       toast('Condiciones guardadas.');
     }
     if(k==='ajustes-horario'){
