@@ -30,8 +30,10 @@ function revisarVencimientos() {
   const prestamos = consultar_('prestamos', 'estado', 'entregado');
   if (!prestamos.length) return;
 
-  const usuarios = listar_('usuarios');
-  const cfg = leer_('ajustes/general') || {};
+  // Para cuidar la cuota gratuita de Firestore (50.000 lecturas/día) solo se leen
+  // los préstamos activos en cada revisión; estudiante, herramienta y ajustes se leen
+  // únicamente cuando hay que enviar un aviso.
+  let cfg = null;
   const cache = {};
   let enviados = 0;
 
@@ -52,7 +54,8 @@ function revisarVencimientos() {
     const porCorreo = tipo === 'avisoAtraso' || AVISOS_CORREO.indexOf(min) >= 0;
     const porTelefono = tipo === 'avisoAtraso' || AVISOS_TELEFONO.indexOf(min) >= 0;
 
-    const est = buscarEstudiante_(p, usuarios);
+    if (!cfg) cfg = leer_('ajustes/general') || {};
+    const est = buscarEstudiante_(p);
     const uid = (est && est.uid) || p.estudianteId || (est && est._id) || '';
     if ((!est || !est.correo) && !tieneTelefono_(uid)) { marcar_(p._id, marcas, 'sin-correo'); return; }
 
@@ -98,10 +101,9 @@ function revisarVencimientos() {
 /** Ejecuta una vez para comprobar el acceso (no envía correos). */
 function probar() {
   const p = consultar_('prestamos', 'estado', 'entregado');
-  const u = listar_('usuarios');
-  console.log('Conexión OK. Préstamos activos: ' + p.length + ' · Usuarios: ' + u.length + ' · Correos disponibles hoy: ' + MailApp.getRemainingDailyQuota());
+  console.log('Conexión OK. Préstamos activos: ' + p.length + ' · Correos disponibles hoy: ' + MailApp.getRemainingDailyQuota());
   p.forEach(function (x) {
-    const e = buscarEstudiante_(x, u);
+    const e = buscarEstudiante_(x);
     const uid = (e && e.uid) || x.estudianteId || (e && e._id) || '';
     console.log('- vence ' + x.venceEn + ' · ' + (e ? (e.nombre || '') + ' <' + (e.correo || 'sin correo') + '>' : (x.estudianteTexto || 'estudiante no encontrado'))
       + (tieneTelefono_(uid) ? ' · avisos en teléfono: sí' : '') + (UMBRALES_.filter(function (m) { return yaAvisado_(x, m); }).length ? ' · avisado: ' + UMBRALES_.filter(function (m) { return yaAvisado_(x, m); }).join(', ') + ' min' : ''));
@@ -146,7 +148,7 @@ function notificar_(uid, titulo, cuerpo) {
 /** Envía una notificación de prueba a tus propios teléfonos (los del correo indicado). */
 function probarNotificacion() {
   const correo = 'ESCRIBE_AQUI_TU_CORREO_DE_SIPRESTA';
-  const docs = listar_('push').filter(function (d) { return (d.correo || '').toLowerCase() === correo.toLowerCase(); });
+  const docs = consultar_('push', 'correo', correo.trim().toLowerCase());
   if (!docs.length) { console.log('Ese correo aún no activó avisos en ningún teléfono.'); return; }
   docs.forEach(function (d) { notificar_(d._id, 'Prueba de SIPRESTA', 'Si ves esto, los avisos en el teléfono funcionan.'); });
   console.log('Notificación de prueba enviada a ' + docs.length + ' cuenta(s).');
@@ -165,14 +167,13 @@ const UMBRALES_ = AVISOS_CORREO.concat(AVISOS_TELEFONO).filter(function (m, i, a
 function yaAvisado_(p, m) { return !!(p['aviso' + m] || (m === 60 && p.aviso1h)); }
 
 // ---------- Estudiante ----------
-function buscarEstudiante_(p, usuarios) {
-  const limpiaRun = function (r) { return String(r || '').replace(/[^0-9kK]/g, '').toUpperCase(); };
-  const limpia = function (s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim(); };
+function buscarEstudiante_(p) {
+  // Lee solo la ficha de este estudiante (no toda la colección de usuarios).
   let u = null;
-  if (p.estudianteId) u = usuarios.find(function (x) { return x._id === p.estudianteId || x.uid === p.estudianteId; });
-  if (!u && p.estudianteRun) u = usuarios.find(function (x) { return x.run && limpiaRun(x.run) === limpiaRun(p.estudianteRun); });
-  if (!u && p.estudianteTexto) u = usuarios.find(function (x) { return limpia(x.nombre) === limpia(p.estudianteTexto); });
-  return u || null;
+  if (p.estudianteId) u = leer_('usuarios/' + p.estudianteId) || consultar_('usuarios', 'uid', p.estudianteId, 1)[0] || null;
+  if (!u && p.estudianteRun) u = consultar_('usuarios', 'run', p.estudianteRun, 1)[0] || null;
+  if (!u && p.estudianteTexto) u = consultar_('usuarios', 'nombre', String(p.estudianteTexto).trim(), 1)[0] || null;
+  return u;
 }
 
 // ---------- Firestore (REST) ----------
@@ -196,9 +197,10 @@ function listar_(col) {
   } while (tok);
   return out;
 }
-function consultar_(col, campo, valor) {
-  const r = pedir_(BASE_ + ':runQuery', 'post', { structuredQuery: { from: [{ collectionId: col }],
-    where: { fieldFilter: { field: { fieldPath: campo }, op: 'EQUAL', value: { stringValue: valor } } } } });
+function consultar_(col, campo, valor, limite) {
+  const q = { from: [{ collectionId: col }], where: { fieldFilter: { field: { fieldPath: campo }, op: 'EQUAL', value: { stringValue: valor } } } };
+  if (limite) q.limit = limite;
+  const r = pedir_(BASE_ + ':runQuery', 'post', { structuredQuery: q });
   return (r || []).filter(function (x) { return x.document; }).map(function (x) { return doc_(x.document); });
 }
 function marcar_(id, campos, valor) {
