@@ -2,7 +2,7 @@
 
 Script de Google Apps Script que revisa los préstamos cada 5 minutos y envía:
 - recordatorios **1 hora, 30 minutos y 15 minutos antes** del vencimiento;
-- un aviso cuando el préstamo **ya está atrasado** (desactivable con `AVISAR_ATRASO = false`).
+- un aviso cuando el préstamo **ya está atrasado** y, mientras siga atrasado, **un recordatorio al día** a las 9:00, de lunes a viernes (ajustable con `ATRASO_DIARIO_*`).
 
 Llega por **correo** y, si el estudiante aceptó «Activar» en la app, como **notificación en su teléfono**
 (Firebase Cloud Messaging; en iPhone requiere haber agregado SIPRESTA a la pantalla de inicio, iOS 16.4+).
