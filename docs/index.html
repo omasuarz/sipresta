@@ -1167,13 +1167,19 @@ function dominioOk(mail){var d=mail.split('@')[1]||'';return DOMINIOS.indexOf(d)
 var sesion=new Promise(function(listo){
   var primero=true;
   auth.onAuthStateChanged(function(u){
-    if(u&&!dominioOk(correo(u))){
-      auth.signOut();
-      alert('La cuenta '+correo(u)+' no está autorizada.\nUsa un correo @utalca.cl, @alumnos.utalca.cl o @gmail.com.');
-      u=null;
-    }
-    if(u&&!u.emailVerified){window.__pendiente=correo(u);u=null;}
-    if(primero){primero=false;listo(u);}
+    /* Correos institucionales y Gmail entran siempre; otros dominios solo si el taller
+       registró a esa persona en Usuarios (lista «invitados», que mantiene el equipo). */
+    var permitido=!u||dominioOk(correo(u))?Promise.resolve(true)
+      :db.doc('invitados/'+correo(u)).get().then(function(d){return d.exists;}).catch(function(){return false;});
+    permitido.then(function(ok){
+      if(u&&!ok){
+        auth.signOut();
+        alert('La cuenta '+correo(u)+' no está autorizada.\nUsa un correo @utalca.cl, @alumnos.utalca.cl o @gmail.com, o pide al Taller que te registre en Usuarios con este correo.');
+        u=null;
+      }
+      if(u&&!u.emailVerified){window.__pendiente=correo(u);u=null;}
+      if(primero){primero=false;listo(u);}
+    });
   });
 });
 
@@ -1182,7 +1188,7 @@ function entrar(){
   var p=new firebase.auth.GoogleAuthProvider();
   p.setCustomParameters({prompt:'select_account'});
   auth.signInWithPopup(p).then(function(r){
-    if(r&&r.user&&dominioOk(correo(r.user)))location.reload();
+    if(r&&r.user)location.reload();
   }).catch(function(e){
     var c=e&&e.code||'';
     if(c==='auth/popup-blocked'||c==='auth/operation-not-supported-in-this-environment')return auth.signInWithRedirect(p);
@@ -1234,7 +1240,7 @@ document.addEventListener('submit',function(ev){
   ev.preventDefault();ev.stopPropagation();
   var mail=document.getElementById('lg-mail').value.trim().toLowerCase(),pass=document.getElementById('lg-pass').value;
   var nomEl=document.getElementById('lg-nom'),nom=nomEl?nomEl.value.trim():'';
-  if(!dominioOk(mail))return alert('Usa un correo @utalca.cl, @alumnos.utalca.cl o @gmail.com.');
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail))return alert('Escribe un correo válido.');
   var btn=ev.target.querySelector('[type=submit]');btn.disabled=true;
   var p=modo==='crear'
     ?auth.createUserWithEmailAndPassword(mail,pass).then(function(r){return r.user.updateProfile({displayName:nom}).then(function(){return r.user.sendEmailVerification(enlace);});})
@@ -1281,7 +1287,7 @@ var user={
 sesion.then(function(u){
   if(!u)return;
   db.doc('perfiles/'+u.uid).set({name:u.displayName||correo(u).split('@')[0],actualizado:new Date().toISOString()},{merge:true}).catch(function(){});
-  Promise.resolve(esDueno(u)||miEquipo(u).then(function(e){return e&&e.rol==='admin';})).then(function(admin){if(admin)sincronizarEquipo();});
+  Promise.resolve(esDueno(u)?{rol:'admin'}:miEquipo(u)).then(function(e){if(e)sincronizarEquipo(e.rol==='admin');}).catch(function(){});
   fichaUsuario(u);
 });
 
@@ -1361,11 +1367,20 @@ function fichaUsuario(u){
 
 /* Mantiene la colección «equipo» (correo → rol) a partir de los roles asignados en Usuarios.
    Las reglas de seguridad usan «equipo» para saber quién es encargado o administrador. */
-function sincronizarEquipo(){
+/* Mantiene «equipo» (roles, solo administradores) e «invitados» (correos de otros dominios
+   registrados en Usuarios, que así pueden iniciar sesión). */
+function sincronizarEquipo(esAdmin){
   db.collection('usuarios').onSnapshot(function(us){
-    var quiero={};
+    var quiero={},inv={};
     us.docs.forEach(function(d){var x=d.data()||{},c=String(x.correo||'').trim().toLowerCase();
-      if(c&&(x.rol==='encargado'||x.rol==='admin')&&c!==DUENO)quiero[c]=x.rol;});
+      if(c&&(x.rol==='encargado'||x.rol==='admin')&&c!==DUENO)quiero[c]=x.rol;
+      if(c&&c.indexOf('@')>0&&!dominioOk(c)&&x.habilitado!==false)inv[c]=1;});
+    db.collection('invitados').get().then(function(iv){
+      var hay={};iv.docs.forEach(function(d){hay[d.id]=1;});
+      Object.keys(inv).forEach(function(c){if(!hay[c])db.doc('invitados/'+c).set({desde:new Date().toISOString()}).catch(function(){});});
+      Object.keys(hay).forEach(function(c){if(!inv[c])db.doc('invitados/'+c).delete().catch(function(){});});
+    }).catch(function(){});
+    if(!esAdmin)return;
     db.collection('equipo').get().then(function(eq){
       var hay={};eq.docs.forEach(function(d){hay[d.id]=(d.data()||{}).rol;});
       Object.keys(quiero).forEach(function(c){if(hay[c]!==quiero[c])db.doc('equipo/'+c).set({rol:quiero[c]}).catch(function(){});});
@@ -2155,7 +2170,7 @@ function userEstado(u){
   if(s)return `<span class="dot bad">Sancionado hasta ${esc(fmt(s.hasta))}</span>`;
   return '<span class="dot ok">Habilitado</span>';
 }
-const ROLES=[['estudiante','Estudiante'],['funcionario','Funcionario'],['docente','Docente'],['encargado','Encargado del taller'],['admin','Administrador de la plataforma']];
+const ROLES=[['estudiante','Estudiante'],['funcionario','Funcionario'],['docente','Docente'],['ayudante','Ayudante profesional'],['invitado','Invitado'],['exalumno','Ex alumno'],['encargado','Encargado del taller'],['admin','Administrador de la plataforma']];
 const ROL_N=Object.fromEntries(ROLES);
 const rolDe=u=>u&&ROL_N[u.rol]?u.rol:'estudiante';
 const esEquipo=r=>r==='encargado'||r==='admin';
@@ -2177,7 +2192,7 @@ function staffUsuarios(){
   const cnt=k=>all.filter(cum[k]).length;
   const list=all.filter(u=>(!q||[u.nombre,u.run,u.matricula,u.carrera,u.correo,ROL_N[rolDe(u)]].join(' ').toLowerCase().includes(q))&&cum[S.fuf](u)&&(!S.fur||(S.fur==='equipo'?esEquipo(rolDe(u)):rolDe(u)===S.fur))&&(!S.fuc||u.carrera===S.fuc)&&(!S.fua||ing(u)===S.fua));
   const nRol=r=>all.filter(u=>r==='equipo'?esEquipo(rolDe(u)):rolDe(u)===r).length;
-  const rolOps=[['estudiante','Estudiantes'],['funcionario','Funcionarios'],['docente','Docentes'],['equipo','Equipo del taller']];
+  const rolOps=[['estudiante','Estudiantes'],['funcionario','Funcionarios'],['docente','Docentes'],['ayudante','Ayudantes profesionales'],['invitado','Invitados'],['exalumno','Ex alumnos'],['equipo','Equipo del taller']];
   const chip=(k,t)=>`<button class="chip" aria-pressed="${S.fuf===k}" data-act="fuf" data-id="${k}">${t} <span class="mono">${cnt(k)}</span></button>`;
   const sel=(id,lab,opts,v)=>`<label class="fsel"><span class="muted">${lab}</span><select id="${id}"><option value="">Todos</option>${opts.map(o=>`<option value="${esc(o)}" ${o===v?'selected':''}>${esc(o)}</option>`).join('')}</select></label>`;
   const hayF=S.fuf!=='todos'||S.fuc||S.fua;
@@ -2195,14 +2210,14 @@ function formUser(u){
   u=u||{};
   const adm=esAdmin(),r0=rolDe(u);
   const rolSel=`<div class="field"><label for="u-rol">Rol</label><select id="u-rol" ${!adm&&esEquipo(r0)?'disabled':''}>${ROLES.map(([k,l])=>`<option value="${k}" ${k===r0?'selected':''} ${!adm&&esEquipo(k)?'disabled':''}>${l}</option>`).join('')}</select>
-    <span class="muted rol-ayuda">${adm?'Estudiante, Funcionario y Docente son usuarios normales. Encargado del taller y Administrador usan el panel del taller: compárteles la aplicación con permiso de edición, con el mismo correo de esta ficha.':'Solo el administrador puede asignar los roles de Encargado del taller y Administrador.'}</span></div>`;
+    <span class="muted rol-ayuda">${adm?'Estudiante, Funcionario, Docente, Ayudante profesional, Invitado y Ex alumno son usuarios normales: pueden pedir herramientas. Encargado del taller y Administrador usan el panel del taller: compárteles la aplicación con permiso de edición, con el mismo correo de esta ficha.':'Solo el administrador puede asignar los roles de Encargado del taller y Administrador.'}</span></div>`;
   sheet(`<h2>${u.id?'Editar ficha':'Nuevo usuario'}</h2>
     <div class="field"><label for="u-nombre">Nombre completo (nombres y luego apellidos)</label><input id="u-nombre" value="${esc(u.nombre)}" autocomplete="off" placeholder="Ej.: Ana María Pérez Soto"><input id="u-ap" type="hidden" value="${esc(u.apellidos||'')}"></div>
     ${rolSel}
     <div class="two"><div class="field"><label for="u-run">RUN</label><input id="u-run" class="mono" value="${esc(u.run)}" placeholder="Ej.: 12.345.678-9"></div>
     <div class="field"><label for="u-mat">Matrícula</label><input id="u-mat" class="mono" value="${esc(u.matricula)}"></div></div>
     <div class="field"><label for="u-car">Carrera o unidad</label><input id="u-car" value="${esc(u.carrera)}" placeholder="Ej.: Arquitectura"></div>
-    <div class="field"><label for="u-cor">Correo institucional</label><input id="u-cor" type="email" value="${esc(u.correo)}" placeholder="nombre@alumnos.utalca.cl"></div>
+    <div class="field"><label for="u-cor">Correo</label><input id="u-cor" type="email" value="${esc(u.correo)}" placeholder="nombre@alumnos.utalca.cl"><span class="muted" style="font-size:var(--t-xs);margin-top:4px">Puede ser institucional o personal (Gmail, Outlook, etc.). Con este correo la persona inicia sesión.</span></div>
     <label class="chk"><input type="checkbox" id="u-hab" ${u.habilitado===false?'':'checked'}> Habilitado para usar el taller</label>
     ${u.id?(()=>{const ss=userSancAll(u);return `<fieldset><legend class="label">Sanciones (${ss.length})</legend>${ss.length?ss.map(sancDetalle).join(''):'<p class="muted">Sin sanciones registradas.</p>'}</fieldset>`;})():''}
     <fieldset><legend class="label">Excepción (opcional)</legend>
@@ -2912,7 +2927,7 @@ const actions={
     const d={rol:ROL_N[rolSel]?rolSel:'estudiante',nombre:val('u-nombre'),...(()=>{const n=val('u-nombre'),ap=val('u-ap');if(!ap)return {apellidos:'',nombres:''};const i=n.toLowerCase().lastIndexOf(ap.toLowerCase());return i>0&&i+ap.length===n.length?{apellidos:ap,nombres:n.slice(0,i).trim()}:{apellidos:'',nombres:''};})(),run:val('u-run'),matricula:val('u-mat'),carrera:val('u-car'),correo:val('u-cor').toLowerCase(),habilitado:document.getElementById('u-hab').checked,limite:parseInt(val('u-lim'),10)||null,plazoValor:parseInt(val('u-plz'),10)||null,plazoUnidad:val('u-pun')||'d',hasta:val('u-hasta'),motivoExc:val('u-mot')};
     if(!d.nombre)return toast('Escribe el nombre del usuario.');
     if((d.limite||d.plazoValor)&&!d.motivoExc)return toast('Indica el motivo de la excepción.');
-    if(d.correo&&!/^[^\s@]+@([a-z0-9-]+\.)*utalca\.cl$/i.test(d.correo))return toast('El correo debe ser institucional (termina en utalca.cl).');
+    if(d.correo&&!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(d.correo))return toast('Revisa el correo: no parece válido.');
     const norm2=x=>String(x||'').replace(/[.\s-]/g,'').toLowerCase();
     const dup=S.users.find(u=>u.id!==id&&((d.run&&norm2(u.run)===norm2(d.run))||(d.matricula&&norm2(u.matricula)===norm2(d.matricula))||(d.correo&&String(u.correo||'').toLowerCase()===d.correo)));
     if(dup)return toast('Ya existe un usuario con ese RUN, matrícula o correo: '+dup.nombre+'.');
@@ -3265,7 +3280,7 @@ function previewUsers(t){
     const d={nombre:o.nombre||o.nombrecompleto||'',run:o.run||o.rut||'',matricula:o.matricula||'',carrera:o.carrera||'',correo:(o.correo||o.correoinstitucional||o.email||'').toLowerCase()};
     const ln=i+2;
     if(!d.nombre){bad.push('Fila '+ln+': falta el nombre.');return;}
-    if(d.correo&&!/^[^\s@]+@([a-z0-9-]+\.)*utalca\.cl$/i.test(d.correo)){bad.push('Fila '+ln+' ('+d.nombre+'): el correo no es institucional.');return;}
+    if(d.correo&&!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(d.correo)){bad.push('Fila '+ln+' ('+d.nombre+'): el correo no es válido.');return;}
     const ks=[n2(d.run),n2(d.matricula),d.correo].filter(Boolean);
     if(ks.some(k=>seen.has(k))){bad.push('Fila '+ln+' ('+d.nombre+'): ya existe (RUN, matrícula o correo repetido).');return;}
     ks.forEach(k=>seen.add(k));ok.push(d);});

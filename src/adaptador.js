@@ -19,13 +19,19 @@ function dominioOk(mail){var d=mail.split('@')[1]||'';return DOMINIOS.indexOf(d)
 var sesion=new Promise(function(listo){
   var primero=true;
   auth.onAuthStateChanged(function(u){
-    if(u&&!dominioOk(correo(u))){
-      auth.signOut();
-      alert('La cuenta '+correo(u)+' no está autorizada.\nUsa un correo @utalca.cl, @alumnos.utalca.cl o @gmail.com.');
-      u=null;
-    }
-    if(u&&!u.emailVerified){window.__pendiente=correo(u);u=null;}
-    if(primero){primero=false;listo(u);}
+    /* Correos institucionales y Gmail entran siempre; otros dominios solo si el taller
+       registró a esa persona en Usuarios (lista «invitados», que mantiene el equipo). */
+    var permitido=!u||dominioOk(correo(u))?Promise.resolve(true)
+      :db.doc('invitados/'+correo(u)).get().then(function(d){return d.exists;}).catch(function(){return false;});
+    permitido.then(function(ok){
+      if(u&&!ok){
+        auth.signOut();
+        alert('La cuenta '+correo(u)+' no está autorizada.\nUsa un correo @utalca.cl, @alumnos.utalca.cl o @gmail.com, o pide al Taller que te registre en Usuarios con este correo.');
+        u=null;
+      }
+      if(u&&!u.emailVerified){window.__pendiente=correo(u);u=null;}
+      if(primero){primero=false;listo(u);}
+    });
   });
 });
 
@@ -34,7 +40,7 @@ function entrar(){
   var p=new firebase.auth.GoogleAuthProvider();
   p.setCustomParameters({prompt:'select_account'});
   auth.signInWithPopup(p).then(function(r){
-    if(r&&r.user&&dominioOk(correo(r.user)))location.reload();
+    if(r&&r.user)location.reload();
   }).catch(function(e){
     var c=e&&e.code||'';
     if(c==='auth/popup-blocked'||c==='auth/operation-not-supported-in-this-environment')return auth.signInWithRedirect(p);
@@ -86,7 +92,7 @@ document.addEventListener('submit',function(ev){
   ev.preventDefault();ev.stopPropagation();
   var mail=document.getElementById('lg-mail').value.trim().toLowerCase(),pass=document.getElementById('lg-pass').value;
   var nomEl=document.getElementById('lg-nom'),nom=nomEl?nomEl.value.trim():'';
-  if(!dominioOk(mail))return alert('Usa un correo @utalca.cl, @alumnos.utalca.cl o @gmail.com.');
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail))return alert('Escribe un correo válido.');
   var btn=ev.target.querySelector('[type=submit]');btn.disabled=true;
   var p=modo==='crear'
     ?auth.createUserWithEmailAndPassword(mail,pass).then(function(r){return r.user.updateProfile({displayName:nom}).then(function(){return r.user.sendEmailVerification(enlace);});})
@@ -133,7 +139,7 @@ var user={
 sesion.then(function(u){
   if(!u)return;
   db.doc('perfiles/'+u.uid).set({name:u.displayName||correo(u).split('@')[0],actualizado:new Date().toISOString()},{merge:true}).catch(function(){});
-  Promise.resolve(esDueno(u)||miEquipo(u).then(function(e){return e&&e.rol==='admin';})).then(function(admin){if(admin)sincronizarEquipo();});
+  Promise.resolve(esDueno(u)?{rol:'admin'}:miEquipo(u)).then(function(e){if(e)sincronizarEquipo(e.rol==='admin');}).catch(function(){});
   fichaUsuario(u);
 });
 
@@ -213,11 +219,20 @@ function fichaUsuario(u){
 
 /* Mantiene la colección «equipo» (correo → rol) a partir de los roles asignados en Usuarios.
    Las reglas de seguridad usan «equipo» para saber quién es encargado o administrador. */
-function sincronizarEquipo(){
+/* Mantiene «equipo» (roles, solo administradores) e «invitados» (correos de otros dominios
+   registrados en Usuarios, que así pueden iniciar sesión). */
+function sincronizarEquipo(esAdmin){
   db.collection('usuarios').onSnapshot(function(us){
-    var quiero={};
+    var quiero={},inv={};
     us.docs.forEach(function(d){var x=d.data()||{},c=String(x.correo||'').trim().toLowerCase();
-      if(c&&(x.rol==='encargado'||x.rol==='admin')&&c!==DUENO)quiero[c]=x.rol;});
+      if(c&&(x.rol==='encargado'||x.rol==='admin')&&c!==DUENO)quiero[c]=x.rol;
+      if(c&&c.indexOf('@')>0&&!dominioOk(c)&&x.habilitado!==false)inv[c]=1;});
+    db.collection('invitados').get().then(function(iv){
+      var hay={};iv.docs.forEach(function(d){hay[d.id]=1;});
+      Object.keys(inv).forEach(function(c){if(!hay[c])db.doc('invitados/'+c).set({desde:new Date().toISOString()}).catch(function(){});});
+      Object.keys(hay).forEach(function(c){if(!inv[c])db.doc('invitados/'+c).delete().catch(function(){});});
+    }).catch(function(){});
+    if(!esAdmin)return;
     db.collection('equipo').get().then(function(eq){
       var hay={};eq.docs.forEach(function(d){hay[d.id]=(d.data()||{}).rol;});
       Object.keys(quiero).forEach(function(c){if(hay[c]!==quiero[c])db.doc('equipo/'+c).set({rol:quiero[c]}).catch(function(){});});

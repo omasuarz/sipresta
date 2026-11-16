@@ -8,7 +8,8 @@ service cloud.firestore {
     function dentro() {
       return request.auth != null
         && request.auth.token.email_verified == true
-        && request.auth.token.email.lower().matches('.*@(utalca[.]cl|alumnos[.]utalca[.]cl|gmail[.]com)$');
+        && (request.auth.token.email.lower().matches('.*@(utalca[.]cl|alumnos[.]utalca[.]cl|gmail[.]com)$')
+            || exists(/databases/$(database)/documents/invitados/$(request.auth.token.email.lower())));
     }
     function correo() { return request.auth.token.email.lower(); }
     function dueno() { return dentro() && correo() == 'omar.suarez@utalca.cl'; }
@@ -28,6 +29,12 @@ service cloud.firestore {
     match /fotos/{id}        { allow read: if dentro(); allow write: if equipo(); }
     // Lista de usuarios: la administra el equipo. Cada persona puede ver su propia ficha,
     // crearla al entrar por primera vez (solo como usuario normal) y dejar registrado su ingreso.
+    // Correos de otros dominios autorizados (ayudantes, invitados, ex alumnos registrados en Usuarios)
+    match /invitados/{mail} {
+      allow get: if request.auth != null && request.auth.token.email.lower() == mail;
+      allow read, write: if equipo();
+    }
+
     match /usuarios/{id} {
       allow read: if equipo() || (dentro() && resource.data.correo == correo());
       allow create: if equipo() || (dentro() && id == request.auth.uid

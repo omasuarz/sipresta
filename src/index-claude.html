@@ -1856,7 +1856,7 @@ function userEstado(u){
   if(s)return `<span class="dot bad">Sancionado hasta ${esc(fmt(s.hasta))}</span>`;
   return '<span class="dot ok">Habilitado</span>';
 }
-const ROLES=[['estudiante','Estudiante'],['funcionario','Funcionario'],['docente','Docente'],['encargado','Encargado del taller'],['admin','Administrador de la plataforma']];
+const ROLES=[['estudiante','Estudiante'],['funcionario','Funcionario'],['docente','Docente'],['ayudante','Ayudante profesional'],['invitado','Invitado'],['exalumno','Ex alumno'],['encargado','Encargado del taller'],['admin','Administrador de la plataforma']];
 const ROL_N=Object.fromEntries(ROLES);
 const rolDe=u=>u&&ROL_N[u.rol]?u.rol:'estudiante';
 const esEquipo=r=>r==='encargado'||r==='admin';
@@ -1878,7 +1878,7 @@ function staffUsuarios(){
   const cnt=k=>all.filter(cum[k]).length;
   const list=all.filter(u=>(!q||[u.nombre,u.run,u.matricula,u.carrera,u.correo,ROL_N[rolDe(u)]].join(' ').toLowerCase().includes(q))&&cum[S.fuf](u)&&(!S.fur||(S.fur==='equipo'?esEquipo(rolDe(u)):rolDe(u)===S.fur))&&(!S.fuc||u.carrera===S.fuc)&&(!S.fua||ing(u)===S.fua));
   const nRol=r=>all.filter(u=>r==='equipo'?esEquipo(rolDe(u)):rolDe(u)===r).length;
-  const rolOps=[['estudiante','Estudiantes'],['funcionario','Funcionarios'],['docente','Docentes'],['equipo','Equipo del taller']];
+  const rolOps=[['estudiante','Estudiantes'],['funcionario','Funcionarios'],['docente','Docentes'],['ayudante','Ayudantes profesionales'],['invitado','Invitados'],['exalumno','Ex alumnos'],['equipo','Equipo del taller']];
   const chip=(k,t)=>`<button class="chip" aria-pressed="${S.fuf===k}" data-act="fuf" data-id="${k}">${t} <span class="mono">${cnt(k)}</span></button>`;
   const sel=(id,lab,opts,v)=>`<label class="fsel"><span class="muted">${lab}</span><select id="${id}"><option value="">Todos</option>${opts.map(o=>`<option value="${esc(o)}" ${o===v?'selected':''}>${esc(o)}</option>`).join('')}</select></label>`;
   const hayF=S.fuf!=='todos'||S.fuc||S.fua;
@@ -1896,14 +1896,14 @@ function formUser(u){
   u=u||{};
   const adm=esAdmin(),r0=rolDe(u);
   const rolSel=`<div class="field"><label for="u-rol">Rol</label><select id="u-rol" ${!adm&&esEquipo(r0)?'disabled':''}>${ROLES.map(([k,l])=>`<option value="${k}" ${k===r0?'selected':''} ${!adm&&esEquipo(k)?'disabled':''}>${l}</option>`).join('')}</select>
-    <span class="muted rol-ayuda">${adm?'Estudiante, Funcionario y Docente son usuarios normales. Encargado del taller y Administrador usan el panel del taller: compárteles la aplicación con permiso de edición, con el mismo correo de esta ficha.':'Solo el administrador puede asignar los roles de Encargado del taller y Administrador.'}</span></div>`;
+    <span class="muted rol-ayuda">${adm?'Estudiante, Funcionario, Docente, Ayudante profesional, Invitado y Ex alumno son usuarios normales: pueden pedir herramientas. Encargado del taller y Administrador usan el panel del taller: compárteles la aplicación con permiso de edición, con el mismo correo de esta ficha.':'Solo el administrador puede asignar los roles de Encargado del taller y Administrador.'}</span></div>`;
   sheet(`<h2>${u.id?'Editar ficha':'Nuevo usuario'}</h2>
     <div class="field"><label for="u-nombre">Nombre completo (nombres y luego apellidos)</label><input id="u-nombre" value="${esc(u.nombre)}" autocomplete="off" placeholder="Ej.: Ana María Pérez Soto"><input id="u-ap" type="hidden" value="${esc(u.apellidos||'')}"></div>
     ${rolSel}
     <div class="two"><div class="field"><label for="u-run">RUN</label><input id="u-run" class="mono" value="${esc(u.run)}" placeholder="Ej.: 12.345.678-9"></div>
     <div class="field"><label for="u-mat">Matrícula</label><input id="u-mat" class="mono" value="${esc(u.matricula)}"></div></div>
     <div class="field"><label for="u-car">Carrera o unidad</label><input id="u-car" value="${esc(u.carrera)}" placeholder="Ej.: Arquitectura"></div>
-    <div class="field"><label for="u-cor">Correo institucional</label><input id="u-cor" type="email" value="${esc(u.correo)}" placeholder="nombre@alumnos.utalca.cl"></div>
+    <div class="field"><label for="u-cor">Correo</label><input id="u-cor" type="email" value="${esc(u.correo)}" placeholder="nombre@alumnos.utalca.cl"><span class="muted" style="font-size:var(--t-xs);margin-top:4px">Puede ser institucional o personal (Gmail, Outlook, etc.). Con este correo la persona inicia sesión.</span></div>
     <label class="chk"><input type="checkbox" id="u-hab" ${u.habilitado===false?'':'checked'}> Habilitado para usar el taller</label>
     ${u.id?(()=>{const ss=userSancAll(u);return `<fieldset><legend class="label">Sanciones (${ss.length})</legend>${ss.length?ss.map(sancDetalle).join(''):'<p class="muted">Sin sanciones registradas.</p>'}</fieldset>`;})():''}
     <fieldset><legend class="label">Excepción (opcional)</legend>
@@ -2613,7 +2613,7 @@ const actions={
     const d={rol:ROL_N[rolSel]?rolSel:'estudiante',nombre:val('u-nombre'),...(()=>{const n=val('u-nombre'),ap=val('u-ap');if(!ap)return {apellidos:'',nombres:''};const i=n.toLowerCase().lastIndexOf(ap.toLowerCase());return i>0&&i+ap.length===n.length?{apellidos:ap,nombres:n.slice(0,i).trim()}:{apellidos:'',nombres:''};})(),run:val('u-run'),matricula:val('u-mat'),carrera:val('u-car'),correo:val('u-cor').toLowerCase(),habilitado:document.getElementById('u-hab').checked,limite:parseInt(val('u-lim'),10)||null,plazoValor:parseInt(val('u-plz'),10)||null,plazoUnidad:val('u-pun')||'d',hasta:val('u-hasta'),motivoExc:val('u-mot')};
     if(!d.nombre)return toast('Escribe el nombre del usuario.');
     if((d.limite||d.plazoValor)&&!d.motivoExc)return toast('Indica el motivo de la excepción.');
-    if(d.correo&&!/^[^\s@]+@([a-z0-9-]+\.)*utalca\.cl$/i.test(d.correo))return toast('El correo debe ser institucional (termina en utalca.cl).');
+    if(d.correo&&!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(d.correo))return toast('Revisa el correo: no parece válido.');
     const norm2=x=>String(x||'').replace(/[.\s-]/g,'').toLowerCase();
     const dup=S.users.find(u=>u.id!==id&&((d.run&&norm2(u.run)===norm2(d.run))||(d.matricula&&norm2(u.matricula)===norm2(d.matricula))||(d.correo&&String(u.correo||'').toLowerCase()===d.correo)));
     if(dup)return toast('Ya existe un usuario con ese RUN, matrícula o correo: '+dup.nombre+'.');
@@ -2966,7 +2966,7 @@ function previewUsers(t){
     const d={nombre:o.nombre||o.nombrecompleto||'',run:o.run||o.rut||'',matricula:o.matricula||'',carrera:o.carrera||'',correo:(o.correo||o.correoinstitucional||o.email||'').toLowerCase()};
     const ln=i+2;
     if(!d.nombre){bad.push('Fila '+ln+': falta el nombre.');return;}
-    if(d.correo&&!/^[^\s@]+@([a-z0-9-]+\.)*utalca\.cl$/i.test(d.correo)){bad.push('Fila '+ln+' ('+d.nombre+'): el correo no es institucional.');return;}
+    if(d.correo&&!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(d.correo)){bad.push('Fila '+ln+' ('+d.nombre+'): el correo no es válido.');return;}
     const ks=[n2(d.run),n2(d.matricula),d.correo].filter(Boolean);
     if(ks.some(k=>seen.has(k))){bad.push('Fila '+ln+' ('+d.nombre+'): ya existe (RUN, matrícula o correo repetido).');return;}
     ks.forEach(k=>seen.add(k));ok.push(d);});
