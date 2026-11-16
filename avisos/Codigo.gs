@@ -6,6 +6,7 @@
  *   1) recordatorios 1 hora, 30 minutos y 15 minutos antes del vencimiento;
  *   2) (opcional) un aviso cuando el préstamo ya está atrasado y, mientras siga atrasado, un recordatorio al día.
  * Por correo y, si el estudiante los activó, como notificación en su teléfono.
+ * Además, al registrar un préstamo, le envía un correo de respaldo con las herramientas y el plazo.
  * Cada préstamo queda marcado (aviso60 / aviso30 / aviso15 / avisoAtraso) para no repetir avisos.
  *
  * Instalación: ver LEEME en esta misma carpeta. Primero ejecuta «probar», luego «instalar».
@@ -26,6 +27,8 @@ const ATRASO_DIARIO_MAX_DIAS = 30;             // deja de insistir después de e
 const NOMBRE_REMITENTE = 'SIPRESTA · Taller de Herramientas y Materiales';
 const URL_APP = 'https://omasuarz.github.io/sipresta/';
 const ZONA = 'America/Santiago';
+// Enviar al estudiante un correo de respaldo apenas se registra el préstamo (con herramientas y plazo).
+const CORREO_AL_PRESTAR = true;
 // Si quieres recibir copia de cada aviso, escribe aquí un correo (o deja '').
 const COPIA_A = '';
 
@@ -45,6 +48,39 @@ function revisarVencimientos() {
   const horaHoy = Number(Utilities.formatDate(new Date(ahora), ZONA, 'H'));
   const diaSem = Number(Utilities.formatDate(new Date(ahora), ZONA, 'u'));   // 1 = lunes … 7 = domingo
   const tocaDiario = ATRASO_DIARIO && horaHoy >= ATRASO_DIARIO_HORA && (!ATRASO_DIARIO_SOLO_HABILES || diaSem <= 5);
+
+  // ---- Respaldo del préstamo: un correo por estudiante con todo lo que se llevó ----
+  if (CORREO_AL_PRESTAR) {
+    const grupos = {};
+    prestamos.forEach(function (p) {
+      const ent = Date.parse(p.entregadoEn || p.creado || '');
+      if (p.avisoEntrega || !ent || ahora - ent > 6 * 3600000) return;     // solo préstamos recién entregados
+      const k = p.estudianteId || p.estudianteRun || p.estudianteTexto || p._id;
+      (grupos[k] = grupos[k] || []).push(p);
+    });
+    Object.keys(grupos).forEach(function (k) {
+      const ls = grupos[k], est = buscarEstudiante_(ls[0]);
+      if (!est || !est.correo) { ls.forEach(function (p) { marcar_(p._id, [], '', { avisoEntrega: 'sin-correo' }); }); return; }
+      if (!cfg) cfg = leer_('ajustes/general') || {};
+      const nombre = nombreDe_(est);
+      const items = ls.map(function (p) {
+        const t = cache[p.herramientaId] || (cache[p.herramientaId] = leer_('herramientas/' + p.herramientaId) || {});
+        return { t: t, p: p, txt: '• ' + (t.nombre || 'Herramienta') + (t.codigo ? ' (' + t.codigo + ')' : '') + (p.unidadBien ? ' · N.º ' + p.unidadBien : '')
+          + '\n   Devolver a más tardar el ' + fechaES_(new Date(Date.parse(p.venceEn))) };
+      });
+      const asunto = (nombre ? nombre + ' · ' : '') + 'Préstamo registrado: ' + items.map(function (x) { return x.t.nombre || 'herramienta'; }).join(', ');
+      let cuerpo = 'Hola ' + nombre + ',\n\nRegistramos tu préstamo en el Taller de Herramientas y Materiales. Este correo es tu respaldo.\n\n'
+        + items.map(function (x) { return x.txt; }).join('\n\n')
+        + '\n\nRecibirás recordatorios antes del vencimiento. Recuerda usar los elementos de protección personal (EPP) que corresponden a cada herramienta.'
+        + '\nLos atrasos generan sanciones según el reglamento del taller.'
+        + '\n\nRevisa tus préstamos en ' + URL_APP + (contacto_(cfg) ? '\n\n' + contacto_(cfg) : '')
+        + '\n\nTaller de Herramientas y Materiales\nEscuela de Arquitectura · Universidad de Talca\n\n(Este es un mensaje automático de SIPRESTA.)';
+      enviarCorreo_(est.correo, asunto, cuerpo, cfg);
+      const marca = new Date().toISOString();
+      ls.forEach(function (p) { marcar_(p._id, [], '', { avisoEntrega: marca }); });
+      enviados++;
+    });
+  }
 
   prestamos.forEach(function (p) {
     const vence = Date.parse(p.venceEn || '');
@@ -73,12 +109,10 @@ function revisarVencimientos() {
     const t = cache[p.herramientaId] || (cache[p.herramientaId] = leer_('herramientas/' + p.herramientaId) || {});
     const herr = (t.nombre || 'la herramienta') + (t.codigo ? ' (' + t.codigo + ')' : '');
     const hora = fechaES_(new Date(vence));
-    const primera = function (x) { return String(x || '').trim().split(/\s+/)[0] || ''; };
-    const nombre = est ? ((est.nombres && est.apellidos) ? primera(est.nombres) + ' ' + primera(est.apellidos) : String(est.nombre || '').trim()) : '';
+    const nombre = nombreDe_(est);
     const faltaTxt = min >= 60 ? '1 hora' : Math.max(1, Math.round(falta / 60000)) + ' minutos';
     const queda = (min >= 60 ? 'Queda ' : 'Quedan ') + faltaTxt;
-    const contacto = [cfg.horario ? 'Horario: ' + cfg.horario : '', cfg.ubicacion ? 'Ubicación: ' + cfg.ubicacion : '',
-      cfg.telefono ? 'Teléfono: ' + cfg.telefono : '', cfg.correo ? 'Correo: ' + cfg.correo : ''].filter(String).join('\n');
+    const contacto = contacto_(cfg);
 
     let asunto, cuerpo;
     if (tipo !== 'avisoAtraso') {
@@ -96,12 +130,8 @@ function revisarVencimientos() {
     cuerpo += '\n\nRevisa tus préstamos en ' + URL_APP + (contacto ? '\n\n' + contacto : '')
       + '\n\nTaller de Herramientas y Materiales\nEscuela de Arquitectura · Universidad de Talca\n\n(Este es un mensaje automático de SIPRESTA.)';
 
-    if (porCorreo && est && est.correo) {
-      const op = { name: NOMBRE_REMITENTE };
-      if (cfg.correo) op.replyTo = cfg.correo;
-      if (COPIA_A) op.bcc = COPIA_A;
-      MailApp.sendEmail(est.correo, asunto, cuerpo, op);
-    }
+    if (nombre) asunto = nombre + ' · ' + asunto;
+    if (porCorreo && est && est.correo) enviarCorreo_(est.correo, asunto, cuerpo, cfg);
     const hhmm = Utilities.formatDate(new Date(vence), ZONA, 'HH:mm');
     if (porTelefono) notificar_(uid, tipo !== 'avisoAtraso' ? queda + ' · devuelve ' + (t.nombre || 'tu herramienta') : (diasAtr > 1 ? diasAtr + ' días de atraso' : 'Préstamo atrasado'),
       tipo !== 'avisoAtraso' ? 'Tu préstamo de ' + herr + ' vence a las ' + hhmm + '. Devuélvelo en el Taller de Herramientas y Materiales.'
@@ -166,6 +196,24 @@ function probarNotificacion() {
   if (!docs.length) { console.log('Ese correo aún no activó avisos en ningún teléfono.'); return; }
   docs.forEach(function (d) { notificar_(d._id, 'Prueba de SIPRESTA', 'Si ves esto, los avisos en el teléfono funcionan.'); });
   console.log('Notificación de prueba enviada a ' + docs.length + ' cuenta(s).');
+}
+
+// ---------- Correo ----------
+function nombreDe_(est) {
+  if (!est) return '';
+  const primera = function (x) { return String(x || '').trim().split(/\s+/)[0] || ''; };
+  return (est.nombres && est.apellidos) ? primera(est.nombres) + ' ' + primera(est.apellidos) : String(est.nombre || '').trim();
+}
+function contacto_(cfg) {
+  cfg = cfg || {};
+  return [cfg.horario ? 'Horario: ' + cfg.horario : '', cfg.ubicacion ? 'Ubicación: ' + cfg.ubicacion : '',
+    cfg.telefono ? 'Teléfono: ' + cfg.telefono : '', cfg.correo ? 'Correo: ' + cfg.correo : ''].filter(String).join('\n');
+}
+function enviarCorreo_(para, asunto, cuerpo, cfg) {
+  const op = { name: NOMBRE_REMITENTE };
+  if (cfg && cfg.correo) op.replyTo = cfg.correo;
+  if (COPIA_A) op.bcc = COPIA_A;
+  MailApp.sendEmail(para, asunto, cuerpo, op);
 }
 
 // ---------- Fecha en español ----------
