@@ -199,10 +199,28 @@ function probarNotificacion() {
 }
 
 // ---------- Correo ----------
+/* «Florencia Cox»: primer nombre + primer apellido.
+   Si la ficha guarda el nombre completo en un solo campo, detecta el orden: si el correo contiene
+   la primera palabra (ej.: fcox25 → «Cox Riquelme Florencia Victoria») va apellidos primero;
+   si no se puede saber, usa ORDEN_NOMBRE_POR_DEFECTO. */
+const ORDEN_NOMBRE_POR_DEFECTO = 'apellidos';   // 'apellidos' = «Apellidos Nombres» · 'nombres' = «Nombres Apellidos»
 function nombreDe_(est) {
   if (!est) return '';
+  const lim = function (x) { return String(x || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-zñ]/g, ''); };
+  const cap = function (x) { return x === x.toUpperCase() ? x.charAt(0) + x.slice(1).toLowerCase() : x; };
   const primera = function (x) { return String(x || '').trim().split(/\s+/)[0] || ''; };
-  return (est.nombres && est.apellidos) ? primera(est.nombres) + ' ' + primera(est.apellidos) : String(est.nombre || '').trim();
+  if (est.nombres && est.apellidos) return cap(primera(est.nombres)) + ' ' + cap(primera(est.apellidos));
+  const w = String(est.nombre || '').trim().split(/\s+/).filter(String), n = w.length;
+  if (n <= 2) return w.map(cap).join(' ');
+  const loc = lim(String(est.correo || '').split('@')[0]);
+  const pos = function (x) { const y = lim(x); return y.length >= 3 && loc ? loc.indexOf(y) : -1; };
+  const pA = pos(w[0]), pB = pos(w[n >= 4 ? n - 2 : 1]);       // dónde aparece cada posible apellido en el correo
+  let apPrimero;
+  if (pA >= 0 && pB >= 0) apPrimero = pA > pB;                 // el apellido suele ir después del nombre o inicial
+  else if (pA >= 0) apPrimero = true;
+  else if (pB >= 0) apPrimero = false;
+  else apPrimero = ORDEN_NOMBRE_POR_DEFECTO === 'apellidos';
+  return apPrimero ? cap(w[2]) + ' ' + cap(w[0]) : cap(w[0]) + ' ' + cap(w[n >= 4 ? n - 2 : 1]);
 }
 function contacto_(cfg) {
   cfg = cfg || {};

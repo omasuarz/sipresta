@@ -1730,7 +1730,15 @@ function catalogo(){
 }
 
 /* «Nombre Apellido» para saludar: primer nombre + primer apellido si están separados; si no, el nombre completo. */
-function saludoNombre(r){if(!r)return '';const w=x=>String(x||'').trim().split(/\s+/)[0]||'';return r.nombres&&r.apellidos?(w(r.nombres)+' '+w(r.apellidos)).trim():String(r.nombre||'').trim();}
+function saludoNombre(r){
+  if(!r)return '';
+  const lim=x=>String(x||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-zñ]/g,''),cap=x=>x===x.toUpperCase()?x.charAt(0)+x.slice(1).toLowerCase():x,pri=x=>String(x||'').trim().split(/\s+/)[0]||'';
+  if(r.nombres&&r.apellidos)return cap(pri(r.nombres))+' '+cap(pri(r.apellidos));
+  const w=String(r.nombre||'').trim().split(/\s+/).filter(Boolean),n=w.length;if(n<=2)return w.map(cap).join(' ');
+  const loc=lim(String(r.correo||'').split('@')[0]),pos=x=>{const y=lim(x);return y.length>=3&&loc?loc.indexOf(y):-1;};
+  const pA=pos(w[0]),pB=pos(w[n>=4?n-2:1]),ap=pA>=0&&pB>=0?pA>pB:pA>=0?true:pB>=0?false:true;
+  return ap?cap(w[2])+' '+cap(w[0]):cap(w[0])+' '+cap(w[n>=4?n-2:1]);
+}
 function regDe(l){
   const us=S.users||[];
   if(l.estudianteId){const r=us.find(u=>u.id===l.estudianteId||u.uid===l.estudianteId);if(r)return r;}
