@@ -33,7 +33,21 @@ const CORREO_AL_PRESTAR = true;
 const COPIA_A = '';
 
 // ---------- Tareas ----------
+/** La app llama a este enlace (Implementar → Aplicación web) apenas se registra un préstamo,
+ *  para que el correo de respaldo salga de inmediato. Solo revisa: no recibe ni expone datos. */
+function doGet() {
+  revisarVencimientos();
+  return ContentService.createTextOutput('ok');
+}
+
 function revisarVencimientos() {
+  // Evita que dos revisiones simultáneas (enlace + revisión cada 5 min) envíen el mismo correo.
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(25000)) return;
+  try { revisar_(); } finally { lock.releaseLock(); }
+}
+
+function revisar_() {
   const ahora = Date.now();
   const prestamos = consultar_('prestamos', 'estado', 'entregado');
   if (!prestamos.length) return;

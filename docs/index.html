@@ -2006,6 +2006,14 @@ document.addEventListener('change',async ev=>{
   (pf==='d'?escaneoDev:pf==='e'?procesarScanEstacion:aplicarEscaneo)(raw);
 },true);
 /* Escaneo desde la Estación o el Modo mostrador (lector USB, teclado o cámara). */
+/* Correo de respaldo inmediato: al registrarse una entrega, avisa al script de avisos (si está configurado). */
+const avisados=new Set();let avisoT=0;
+function avisarEntregas(){
+  const url=String((S.cfg&&S.cfg.avisosUrl)||'').trim();if(!/^https:\/\/script\.google\.com\//.test(url))return;
+  const nuevos=S.loans.filter(l=>l.estado==='entregado'&&!l.avisoEntrega&&!avisados.has(l.id)&&Date.now()-ts(l.entregadoEn||l.creado)<10*60000);
+  if(!nuevos.length)return;nuevos.forEach(l=>avisados.add(l.id));
+  clearTimeout(avisoT);avisoT=setTimeout(()=>{try{fetch(url+(url.includes('?')?'&':'?')+'t='+Date.now(),{mode:'no-cors',cache:'no-store'}).catch(()=>{});}catch(e){}},1500);
+}
 async function procesarScanEstacion(c){
   c=String(c||'').trim();if(!c)return;
   if(S.mostrador){await scanMostrador(c);const f=document.getElementById('scan');if(f)f.focus();return;}
@@ -2499,6 +2507,8 @@ function staffAjustes(){
    ${fld('a-ubi','Ubicación',c.ubicacion,'Ej.: Edificio, piso y sala')}
    ${fld('a-map','Enlace de Google Maps',c.mapa,'Ej.: https://maps.app.goo.gl/...')}
    ${fld('a-ig','Instagram (usuario o enlace)',c.instagram,'Ej.: @tallerarquitectura')}</div>
+   ${fld('a-avu','Enlace del script de avisos (opcional)',c.avisosUrl||'','https://script.google.com/macros/s/…/exec')}
+   <p class="muted" style="font-size:var(--t-xs);margin-top:-4px">Con este enlace, el correo de respaldo al estudiante sale apenas registras el préstamo. No se muestra a los usuarios.</p>
    <div class="actions" style="margin-top:12px"><button class="btn primary" type="submit">Guardar contacto</button></div></div></form>
   <section class="panel-list"><h3>Datos</h3><div class="row" style="display:block"><p class="muted">Carga herramientas o estudiantes desde una planilla, o descarga los registros para abrirlos en Excel (CSV separado por punto y coma).</p>
    <div class="actions" style="justify-content:flex-start;gap:10px;flex-wrap:wrap;margin-top:12px"><button class="btn" type="button" data-act="imp-abrir" data-id="tools">Importar herramientas</button><button class="btn" type="button" data-act="imp-abrir" data-id="users">Importar estudiantes</button></div>
@@ -3527,7 +3537,7 @@ document.addEventListener('submit',async e=>{
       toast('Horario guardado.');
     }
     if(k==='ajustes-contacto'){
-      await S.db.doc('ajustes/general').set({...S.cfg,correo:val('a-cor'),telefono:val('a-tel'),ubicacion:val('a-ubi'),mapa:val('a-map'),instagram:val('a-ig')});
+      await S.db.doc('ajustes/general').set({...S.cfg,correo:val('a-cor'),telefono:val('a-tel'),ubicacion:val('a-ubi'),mapa:val('a-map'),instagram:val('a-ig'),avisosUrl:val('a-avu').trim()});
       toast('Contacto guardado.');
     }
   }catch(err){toast(errMsg(err));}
@@ -3554,6 +3564,7 @@ async function boot(){
   const fail=()=>{};
   db.collection('herramientas').onSnapshot(s=>{S.tools=s.docs.map(d=>({id:d.id,...d.data()}));S.loaded.tools=true;render();},fail);
   db.collection('prestamos').onSnapshot(s=>{S.loaded.loans=true;const prev=new Map((S.loans||[]).map(l=>[l.id,l.estado]));S.loans=s.docs.map(d=>({id:d.id,...d.data()}));
+    if(S.isStaff)avisarEntregas();
     if(prev.size&&!S.isStaff)S.loans.forEach(l=>{if(l.estudianteId===S.uid&&l.estado==='devuelto'&&prev.get(l.id)==='entregado'){const t=T(l.herramientaId),ok=!(l.venceEn&&ts(l.devueltoEn)>ts(l.venceEn));setTimeout(()=>{if(ok){toast('¡'+(t?t.nombre:'Herramienta')+' devuelta a tiempo! 👏');confeti();}else toast((t?t.nombre:'Herramienta')+' devuelta. Gracias.');},300);}});
     render();},fail);
   db.collection('sanciones').onSnapshot(s=>{S.sanc=s.docs.map(d=>({id:d.id,...d.data()}));render();},fail);
