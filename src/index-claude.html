@@ -1116,6 +1116,7 @@ html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 /* todo lo que va directo en la página queda centrado en la misma columna (barras, accesos rápidos, avisos) */
 @media(min-width:861px){.main>*{margin-left:auto!important;margin-right:auto!important}}
 .cod-auto{font-weight:400}
+.oper{font-size:var(--t-xs)}
 .foot-a{color:inherit;text-decoration:none;border-bottom:1px solid transparent;transition:border-color .15s,color .15s}
 .foot-a:hover,.foot-a:focus-visible{color:var(--ink);border-bottom-color:currentColor}
 </style>
@@ -1244,7 +1245,7 @@ function toastUndo(m,fn){
   e.appendChild(b);clearTimeout(toast.t);toast.t=setTimeout(()=>{e.textContent='';},8000);
 }
 async function deshacerDevol(prev,toolsPrev,now){
-  for(const p of prev)await S.db.doc('prestamos/'+p.id).update({estado:'entregado',devueltoEn:null,condicion:null,nota:p.nota==null?null:p.nota});
+  for(const p of prev)await S.db.doc('prestamos/'+p.id).update({estado:'entregado',devueltoEn:null,condicion:null,nota:p.nota==null?null:p.nota,devueltoPor:null,devueltoPorCorreo:null});
   for(const t of toolsPrev)await S.db.doc('herramientas/'+t.id).update({fuera:t.fuera||0,fueraExtra:t.fueraExtra||0,mantenciones:t.mantenciones||[]});
   const ids=new Set(prev.map(p=>p.id)),cr=iso(now);
   for(const x of (S.sanc||[]).filter(x=>x.creado===cr&&(ids.has(x.prestamoId)||(x.prestamoIds||[]).some(i=>ids.has(i)))))await col('sanciones').doc(x.id).delete();
@@ -1435,12 +1436,19 @@ function quienHTML(l){
   const r=regDe(l),nom=(r&&r.nombre)||persona(l),run=l.estudianteRun||(r&&r.run)||'';
   return `<span class="quien"><b>${esc(nom)}</b>${run?` <span class="mono muted">RUN ${esc(run)}</span>`:''}</span>`;
 }
+/* Quién del equipo hizo cada acción (auditoría). */
+const yoNombre=()=>S.name||S.myEmail||'Equipo del taller';
+const yo=pref=>({[pref+'Por']:yoNombre(),[pref+'PorCorreo']:S.myEmail||''});
+function operadoresHTML(l){
+  if(!S.isStaff||!(l.entregadoPor||l.devueltoPor))return '';
+  return `<span class="muted oper">${l.entregadoPor?'Entregó: '+esc(l.entregadoPor):''}${l.entregadoPor&&l.devueltoPor?' · ':''}${l.devueltoPor?'Recibió: '+esc(l.devueltoPor):''}</span>`;
+}
 function loanRow(l,opts){
   const t=T(l.herramientaId),e=estado(l);
   const nombre=t?t.nombre:'(herramienta eliminada)';
   const sel=opts.sel&&(S.devSel||[]).includes(l.id);
   return `<div class="row ${e==='atrasado'?'late':''}${sel?' selrow':''}"><div class="row-lead">${opts.sel?`<input type="checkbox" class="rsel" data-act="dsel" data-id="${l.id}" ${sel?'checked':''} aria-label="Seleccionar ${esc(nombre)}">`:''}${t?`<span class="row-img">${t.fotoId?`<img src="${fotoUrl(t.fotoId)}" alt="" loading="lazy">`:ilustracion(t)}</span>`:''}<div class="row-main"><span class="row-title">${esc(nombre)} ${t?`<span class="mono muted">${esc(t.codigo||'')}</span>`:''}</span>
-    ${opts.persona?quienHTML(l):''}<span class="muted">${esc(infoLinea(l))}</span>${(l.unidadBien||l.unidadSerie)?`<span class="muted">Unidad: ${esc(l.unidadBien||'—')}${l.unidadSerie?' · serie '+esc(l.unidadSerie):''}</span>`:''}${l.nota?`<span class="muted">Observación: ${esc(l.nota)}</span>`:''}${l.motivoExcepcion?`<span class="muted">Excepción: ${esc(l.motivoExcepcion)}</span>`:''}</div></div>
+    ${opts.persona?quienHTML(l):''}<span class="muted">${esc(infoLinea(l))}</span>${operadoresHTML(l)}${(l.unidadBien||l.unidadSerie)?`<span class="muted">Unidad: ${esc(l.unidadBien||'—')}${l.unidadSerie?' · serie '+esc(l.unidadSerie):''}</span>`:''}${l.nota?`<span class="muted">Observación: ${esc(l.nota)}</span>`:''}${l.motivoExcepcion?`<span class="muted">Excepción: ${esc(l.motivoExcepcion)}</span>`:''}</div></div>
     <div class="row-acts">${pill(e)}${opts.acts?opts.acts(l,e):''}</div></div>`;
 }
 
@@ -1863,6 +1871,7 @@ function sancDetalle(s){
   const v=sancVive(s);
   return `<div class="sdet"><div class="sdet-h"><span class="pill ${v?'late':'quiet'}">${v?'Activa':'Cerrada'}</span><span class="muted">${esc(fmt(s.creado))} → ${esc(fmt(v?s.hasta:(s.activa?s.hasta:(s.levantada||s.hasta))))}</span></div>
     <p>${esc(s.motivo||'')}</p>
+    ${S.isStaff&&(s.aplicadaPor||s.levantadaPor)?`<p class="muted oper">${s.aplicadaPor?'Aplicada por '+esc(s.aplicadaPor):''}${s.aplicadaPor&&s.levantadaPor?' · ':''}${s.levantadaPor?'Levantada por '+esc(s.levantadaPor)+(s.levantada?' el '+esc(fmt(s.levantada)):''):''}</p>`:''}
     ${sObs(s)?`<p class="sobs"><b>Observaciones:</b> ${esc(sObs(s))}<span class="muted"> ${s.obsPor?'· '+esc(s.obsPor):''}${s.obsEn?' · '+esc(fmt(s.obsEn)):''}</span></p>`:'<p class="muted">Sin observaciones.</p>'}
     <div class="actions"><button class="btn small" data-act="obs-sanc" data-id="${s.id}" type="button">${sObs(s)?'Editar observaciones':'Agregar observaciones'}</button>${v&&esAdmin()?`<button class="btn small" data-act="levantar" data-id="${s.id}" type="button">Levantar</button>`:''}</div></div>`;
 }
@@ -1965,7 +1974,7 @@ function staffUserLabels(){
 function staffSanciones(soloAct){
   const act=S.sanc.filter(s=>s.activa&&ts(s.hasta)>Date.now()).sort((a,b)=>ts(a.hasta)-ts(b.hasta));
   const pas=S.sanc.filter(s=>!(s.activa&&ts(s.hasta)>Date.now())).sort((a,b)=>ts(b.creado)-ts(a.creado)).slice(0,15);
-  const row=(s,live)=>`<div class="row"><div class="row-main"><span class="row-title">${esc(personaSanc(s))}</span><span class="muted">${esc(s.motivo||'')}</span>${sObs(s)?`<span class="sobs"><b>Obs.:</b> ${esc(sObs(s))}</span>`:''}<span class="muted">${live?'Hasta '+esc(fmt(s.hasta)):'Terminó '+esc(fmt(s.activa?s.hasta:(s.levantada||s.hasta)))}</span></div>
+  const row=(s,live)=>`<div class="row"><div class="row-main"><span class="row-title">${esc(personaSanc(s))}</span><span class="muted">${esc(s.motivo||'')}</span>${sObs(s)?`<span class="sobs"><b>Obs.:</b> ${esc(sObs(s))}</span>`:''}<span class="muted">${live?'Hasta '+esc(fmt(s.hasta)):'Terminó '+esc(fmt(s.activa?s.hasta:(s.levantada||s.hasta)))}</span>${s.aplicadaPor||s.levantadaPor?`<span class="muted oper">${s.aplicadaPor?'Aplicada por '+esc(s.aplicadaPor):''}${s.aplicadaPor&&s.levantadaPor?' · ':''}${s.levantadaPor?'Levantada por '+esc(s.levantadaPor):''}</span>`:''}</div>
     <div class="row-acts"><button class="btn small" data-act="obs-sanc" data-id="${s.id}">${sObs(s)?'Observaciones':'+ Observación'}</button>${live?(esAdmin()?`<button class="btn small" data-act="levantar" data-id="${s.id}">Levantar</button>`:'<span class="pill late">Vigente</span>'):'<span class="pill quiet">Cerrada</span>'}</div></div>`;
   return `<section class="panel-list"><h3>Sanciones activas <span class="mono muted">${act.length}</span></h3>${act.length?act.map(s=>row(s,1)).join(''):'<p class="empty">No hay estudiantes sancionados.</p>'}</section>`+
     (!soloAct&&pas.length?`<section class="panel-list"><h3>Sanciones anteriores</h3>${pas.map(s=>row(s,0)).join('')}</section>`:'')+
@@ -2479,7 +2488,7 @@ const actions={
   entregar:async id=>{
     const l=S.loans.find(x=>x.id===id);if(!l)return;
     const h=l.plazoHoras||(T(l.herramientaId)||{}).plazoHoras||24;
-    await S.db.doc('prestamos/'+id).update({estado:'entregado',entregadoEn:iso(Date.now()),venceEn:iso(ajustarVence(Date.now()+h*3600e3))});
+    await S.db.doc('prestamos/'+id).update({estado:'entregado',entregadoEn:iso(Date.now()),venceEn:iso(ajustarVence(Date.now()+h*3600e3)),...yo('entregado')});
     const t=T(l.herramientaId);toastUndo('Entregada: '+(t?t.nombre:'herramienta')+'.',()=>S.db.doc('prestamos/'+id).update({estado:'reservado',entregadoEn:null,venceEn:null}));
   },
 
@@ -2514,13 +2523,13 @@ const actions={
     const grupos=gruposAtraso(ls),aplicar=grupos.map((g,i)=>!!(document.getElementById('dv-s-'+i)||{}).checked);
     const plan=grupos.map((g,i)=>{const vez=atrasosPrevios(g.ls[0])+1,c=calcSancion(vez-1,g.ls,now);return {g,vez,dh:c.total,dA:c.dA,ok:aplicar[i]&&c.total>0};});
     const porTool={},prevL=ls.map(l=>({id:l.id,nota:l.nota})),prevT=[...new Set(ls.filter(l=>danos.has(l.id)).map(l=>l.herramientaId))].map(T).filter(Boolean).map(t=>({id:t.id,fuera:t.fuera,fueraExtra:t.fueraExtra,mantenciones:t.mantenciones}));
-    for(const l of ls){const d=danos.has(l.id);await S.db.doc('prestamos/'+l.id).update({estado:'devuelto',devueltoEn:iso(now),condicion:d?'dano':'ok',nota:nota||null});if(d)(porTool[l.herramientaId]=porTool[l.herramientaId]||[]).push(l);}
+    for(const l of ls){const d=danos.has(l.id);await S.db.doc('prestamos/'+l.id).update({estado:'devuelto',devueltoEn:iso(now),condicion:d?'dano':'ok',nota:nota||null,...yo('devuelto')});if(d)(porTool[l.herramientaId]=porTool[l.herramientaId]||[]).push(l);}
     for(const [tid,arr] of Object.entries(porTool)){const t=T(tid);if(!t)continue;const k=arr.length,conU=unidadesDe(t).length>0;
       const mms=arr.map((l,j)=>({id:'m'+(now+j).toString(36),fecha:iso(now),motivo:'Daño o faltante al devolver'+(nota?': '+nota:''),unidad:'',ref:l.unidadBien||l.unidadSerie||'',por:S.name||'',estado:'abierta'}));
       await S.db.doc('herramientas/'+t.id).update({...(conU?{fuera:(t.fuera||0)+k,fueraExtra:(t.fueraExtra||0)+k}:{fuera:(t.fuera||0)+k}),mantenciones:[...(t.mantenciones||[]),...mms]});}
     let ns=0;
     for(const p of plan){if(!p.ok)continue;const l=p.g.ls[0],nombres=p.g.ls.map(x=>{const t=T(x.herramientaId);return t?t.nombre:'una herramienta';}).join(', ');ns++;
-      await col('sanciones').add({estudianteId:l.estudianteId||null,estudianteTexto:l.estudianteTexto||null,motivo:(p.vez>1?p.vez+'.º atraso: ':'')+'Atraso de '+p.dA+(p.dA===1?' día':' días')+' en la devolución de '+nombres+' ('+p.dh+' días hábiles).',diasAtraso:p.dA,creado:iso(now),hasta:iso(sumarHabiles(now,p.dh)),activa:true,prestamoId:l.id,prestamoIds:p.g.ls.map(x=>x.id),atraso:true,vez:p.vez,diasHabiles:p.dh,...(nota?{obs:nota,obsPor:S.name||'',obsEn:iso(now)}:{})});}
+      await col('sanciones').add({...yo('aplicada'),estudianteId:l.estudianteId||null,estudianteTexto:l.estudianteTexto||null,motivo:(p.vez>1?p.vez+'.º atraso: ':'')+'Atraso de '+p.dA+(p.dA===1?' día':' días')+' en la devolución de '+nombres+' ('+p.dh+' días hábiles).',diasAtraso:p.dA,creado:iso(now),hasta:iso(sumarHabiles(now,p.dh)),activa:true,prestamoId:l.id,prestamoIds:p.g.ls.map(x=>x.id),atraso:true,vez:p.vez,diasHabiles:p.dh,...(nota?{obs:nota,obsPor:S.name||'',obsEn:iso(now)}:{})});}
     const n=ls.length;S.devSel=[];sheet('');render();toastUndo(n+(n===1?' devolución registrada':' devoluciones registradas')+(ns?'. Se aplicó '+(ns===1?'1 sanción':ns+' sanciones')+'.':'.'),()=>deshacerDevol(prevL,prevT,now));
   },
   'devolver-ok':async id=>{
@@ -2530,10 +2539,10 @@ const actions={
     const sanc=late&&document.getElementById('f-sanc')&&document.getElementById('f-sanc').checked;
     const nota=val('f-nota'),now=Date.now();
     const prevL=[{id,nota:l.nota}],prevT=t?[{id:t.id,fuera:t.fuera,fueraExtra:t.fueraExtra,mantenciones:t.mantenciones}]:[];
-    await S.db.doc('prestamos/'+id).update({estado:'devuelto',devueltoEn:iso(now),condicion:dano?'dano':'ok',nota:nota||null});
+    await S.db.doc('prestamos/'+id).update({estado:'devuelto',devueltoEn:iso(now),condicion:dano?'dano':'ok',nota:nota||null,...yo('devuelto')});
     if(dano&&t){const conU=unidadesDe(t).length>0;const mm={id:'m'+now.toString(36),fecha:iso(now),motivo:'Daño o faltante al devolver'+(nota?': '+nota:''),unidad:'',ref:l.unidadBien||l.unidadSerie||'',por:S.name||'',estado:'abierta'};await S.db.doc('herramientas/'+t.id).update({...(conU?{fuera:(t.fuera||0)+1,fueraExtra:(t.fueraExtra||0)+1}:{fuera:(t.fuera||0)+1}),mantenciones:[...(t.mantenciones||[]),mm]});}
     const vez=atrasosPrevios(l)+1,cs=calcSancion(vez-1,l,now),dh=cs.total;
-    if(sanc&&dh)await col('sanciones').add({estudianteId:l.estudianteId||null,estudianteTexto:l.estudianteTexto||null,motivo:(vez>1?vez+'.º atraso: ':'')+'Atraso de '+cs.dA+(cs.dA===1?' día':' días')+' en la devolución de '+(t?t.nombre:'una herramienta')+' ('+dh+' días hábiles).',diasAtraso:cs.dA,creado:iso(now),hasta:iso(sumarHabiles(now,dh)),activa:true,prestamoId:id,atraso:true,vez,diasHabiles:dh,...(nota?{obs:nota,obsPor:S.name||'',obsEn:iso(now)}:{})});
+    if(sanc&&dh)await col('sanciones').add({...yo('aplicada'),estudianteId:l.estudianteId||null,estudianteTexto:l.estudianteTexto||null,motivo:(vez>1?vez+'.º atraso: ':'')+'Atraso de '+cs.dA+(cs.dA===1?' día':' días')+' en la devolución de '+(t?t.nombre:'una herramienta')+' ('+dh+' días hábiles).',diasAtraso:cs.dA,creado:iso(now),hasta:iso(sumarHabiles(now,dh)),activa:true,prestamoId:id,atraso:true,vez,diasHabiles:dh,...(nota?{obs:nota,obsPor:S.name||'',obsEn:iso(now)}:{})});
     sheet('');toastUndo(sanc&&dh?'Devolución registrada. Se aplicó una sanción de '+dh+' días hábiles.':'Devolución registrada.',()=>deshacerDevol(prevL,dano?prevT:[],now));
   },
 
@@ -2617,7 +2626,7 @@ const actions={
       const t=T(it.id);let hh=t.plazoHoras||24,motivo='';
       if(pv>0){hh=pv*(val('p-un')==='d'?24:1);motivo=mot;}else if(esp){hh=esp;motivo=reg.motivoExc||'';}
       if(sobre)motivo=mot;
-      await col('prestamos').add({herramientaId:t.id,estudianteId:null,estudianteTexto:nombre,...(reg&&reg.run?{estudianteRun:reg.run}:{}),estado:'entregado',creado:iso(now),entregadoEn:iso(now),venceEn:iso(ajustarVence(now+hh*3600e3)),plazoHoras:hh,...(it.bien?{unidadBien:it.bien}:{}),...(it.serie?{unidadSerie:it.serie}:{}),...(sobre?{excedeLimite:true}:{}),...(motivo?{motivoExcepcion:motivo}:{}),...(eppDe(t).length?{epp:eppDe(t),eppOk:true}:{})});
+      await col('prestamos').add({herramientaId:t.id,estudianteId:null,estudianteTexto:nombre,...(reg&&reg.run?{estudianteRun:reg.run}:{}),estado:'entregado',creado:iso(now),entregadoEn:iso(now),...yo('entregado'),venceEn:iso(ajustarVence(now+hh*3600e3)),plazoHoras:hh,...(it.bien?{unidadBien:it.bien}:{}),...(it.serie?{unidadSerie:it.serie}:{}),...(sobre?{excedeLimite:true}:{}),...(motivo?{motivoExcepcion:motivo}:{}),...(eppDe(t).length?{epp:eppDe(t),eppOk:true}:{})});
     }
     const n=S.cart.length;S.cart=[];
     sheet('');toast(n===1?'Préstamo registrado.':n+' préstamos registrados.');
@@ -2688,7 +2697,7 @@ const actions={
       <div class="field"><label for="so-t">Observaciones</label><textarea id="so-t" rows="5" placeholder="Ej.: devolvió con la broca rota; avisó con anticipación">${esc(sObs(s))}</textarea></div>
       <div class="actions">${close}<button class="btn primary" data-act="obs-sanc-ok" data-id="${id}">Guardar</button></div>`);},
   'obs-sanc-ok':async id=>{const t=val('so-t');await S.db.doc('sanciones/'+id).update({obs:t,obsPor:S.name||'',obsEn:iso(Date.now())});sheet('');toast('Observaciones guardadas.');},
-  levantar:async id=>{if(!esAdmin())return toast('Solo el administrador puede levantar sanciones.');await S.db.doc('sanciones/'+id).update({activa:false,levantada:iso(Date.now())});toast('Sanción levantada.');}
+  levantar:async id=>{if(!esAdmin())return toast('Solo el administrador puede levantar sanciones.');await S.db.doc('sanciones/'+id).update({activa:false,levantada:iso(Date.now()),...yo('levantada')});toast('Sanción levantada.');}
 };
 /* ---------- ilustraciones de referencia ---------- */
 const norm=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
@@ -3048,7 +3057,7 @@ function staffReportes(){
 }
 function datosCSV(k){
   const lim=S.rp==='all'?0:Date.now()-parseInt(S.rp,10)*864e5;
-  if(k==='prestamos')return [['Fecha reserva','Estudiante','Herramienta','Código','Unidad','Estado','Entregado','Vence','Devuelto','Condición','Observación']].concat(S.loans.filter(l=>ts(l.creado)>=lim).sort((a,b)=>ts(a.creado)-ts(b.creado)).map(l=>{const t=T(l.herramientaId);return [fmtFull(l.creado),l.estudianteTexto||persona(l),t?t.nombre:'',t?t.codigo:'',l.unidadBien||l.unidadSerie||'',estado(l),fmtFull(l.entregadoEn),fmtFull(l.venceEn),fmtFull(l.devueltoEn),l.condicion==='dano'?'Con daño':(l.condicion==='ok'?'Buen estado':''),l.nota||''];}));
+  if(k==='prestamos')return [['Fecha reserva','Estudiante','Herramienta','Código','Unidad','Estado','Entregado','Vence','Devuelto','Condición','Observación','Entregado por','Recibido por']].concat(S.loans.filter(l=>ts(l.creado)>=lim).sort((a,b)=>ts(a.creado)-ts(b.creado)).map(l=>{const t=T(l.herramientaId);return [fmtFull(l.creado),l.estudianteTexto||persona(l),t?t.nombre:'',t?t.codigo:'',l.unidadBien||l.unidadSerie||'',estado(l),fmtFull(l.entregadoEn),fmtFull(l.venceEn),fmtFull(l.devueltoEn),l.condicion==='dano'?'Con daño':(l.condicion==='ok'?'Buen estado':''),l.nota||'',l.entregadoPor||'',l.devueltoPor||''];}));
   if(k==='inventario'){
     const hd=['Código','Herramienta','Marca','Modelo','Categoría','N° unidad','Número de serie','Código de bienes UTALCA','Estado de la unidad','Stock total','Disponibles','En mantención','Plazo (h)','Ubicación','Estado de la herramienta','Valor por unidad (CLP)'];
     const rows=[];
@@ -3058,7 +3067,7 @@ function datosCSV(k){
       else rows.push([...base,'','','','',...fin]);});
     return [hd,...rows];}
   if(k==='usuarios')return [['Nombre','RUN','Matrícula','Carrera','Correo','Habilitado','Máximo de herramientas','Excepción hasta','Motivo excepción']].concat(S.users.map(u=>[u.nombre||'',u.run||'',u.matricula||'',u.carrera||'',u.correo||'',u.habilitado===false?'No':'Sí',limiteDe(u),u.hasta||'',u.motivoExc||'']));
-  if(k==='sanciones')return [['Estudiante','Motivo','Desde','Hasta','Estado','Observaciones']].concat(S.sanc.map(s=>[personaSanc(s),s.motivo||'',fmtFull(s.creado),fmtFull(s.hasta),sancVive(s)?'Activa':'Cerrada',sObs(s)]));
+  if(k==='sanciones')return [['Estudiante','Motivo','Desde','Hasta','Estado','Observaciones','Aplicada por','Levantada por','Levantada el']].concat(S.sanc.map(s=>[personaSanc(s),s.motivo||'',fmtFull(s.creado),fmtFull(s.hasta),sancVive(s)?'Activa':'Cerrada',sObs(s),s.aplicadaPor||'',s.levantadaPor||'',s.levantada?fmtFull(s.levantada):'']));
   if(k==='mantenciones')return [['Herramienta','Código','Unidad','Ingreso','Motivo','Registró','Estado','Salida','Detalle de la reparación']].concat(S.tools.flatMap(t=>(t.mantenciones||[]).map(m=>[t.nombre,t.codigo||'',m.unidad||m.ref||'',fmtFull(m.fecha),m.motivo||'',m.por||'',m.estado==='cerrada'?'Reparada':'En mantención',fmtFull(m.cierre),m.detalle||''])));
   return [];
 }
@@ -3172,7 +3181,7 @@ Object.assign(actions,{
     const est=val('ns-est'),mot=val('ns-mot'),dias=Math.min(365,Math.max(1,parseInt(val('ns-dias'),10)||sanEsc()[0])),obs=val('ns-obs');
     if(!est)return toast('Indica el estudiante.');if(!mot)return toast('Indica el motivo.');
     const reg=findUserNR(est),nombre=reg?reg.nombre:est,now=Date.now();
-    await col('sanciones').add({estudianteId:null,estudianteTexto:nombre,motivo:mot,creado:iso(now),hasta:iso(sumarHabiles(now,dias)),diasHabiles:dias,activa:true,manual:true,...(obs?{obs,obsPor:S.name||'',obsEn:iso(now)}:{})});
+    await col('sanciones').add({...yo('aplicada'),estudianteId:null,estudianteTexto:nombre,motivo:mot,creado:iso(now),hasta:iso(sumarHabiles(now,dias)),diasHabiles:dias,activa:true,manual:true,...(obs?{obs,obsPor:S.name||'',obsEn:iso(now)}:{})});
     sheet('');toast('Sanción aplicada a '+nombre+'.');},
   comprobante:id=>sheetRcpt(id),
   'imprimir-rcpt':()=>{document.body.classList.add('pr-rcpt');try{window.print();}catch(e){toast('Usa Ctrl+P (o Cmd+P) para imprimir.');}finally{setTimeout(()=>document.body.classList.remove('pr-rcpt'),400);}},
